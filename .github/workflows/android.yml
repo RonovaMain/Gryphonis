@@ -30,6 +30,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'  # Явно указываем только нужные пакеты без 'tools'
 
       - name: Decode release keystore
         if: github.event_name != 'pull_request'
