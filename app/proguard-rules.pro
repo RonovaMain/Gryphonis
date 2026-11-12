@@ -1,1 +1,5 @@
-# Gryphonis currently does not require custom ProGuard rules.
+-keepattributes *Annotation*, SourceFile, LineNumberTable
+-keep class org.apache.commons.net.** { *; }
+-dontwarn org.apache.commons.net.**
+-dontwarn javax.**
+-dontwarn java.lang.invoke.**
