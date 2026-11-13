@@ -1,6 +1,7 @@
 package dev.ronova.gryphonis
 
 import android.graphics.Color as AndroidColor
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -20,9 +21,14 @@ class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
 
+    companion object {
+        const val EXTRA_OPEN_PLAYER = "open_player"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
             val dark = when (settings.themeMode) {
@@ -42,6 +48,19 @@ class MainActivity : ComponentActivity() {
             GryphonisTheme(darkTheme = dark, dynamicColor = settings.dynamicColor) {
                 GryphonisRoot(vm)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) {
+            intent.removeExtra(EXTRA_OPEN_PLAYER)
+            vm.showPlayer()
         }
     }
 

@@ -3,3 +3,8 @@
 -dontwarn org.apache.commons.net.**
 -dontwarn javax.**
 -dontwarn java.lang.invoke.**
+-dontwarn org.checkerframework.**
+-dontwarn com.google.errorprone.**
+-dontwarn com.google.j2objc.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn androidx.media3.**

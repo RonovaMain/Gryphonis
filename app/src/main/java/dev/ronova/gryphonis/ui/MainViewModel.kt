@@ -19,6 +19,7 @@ import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.data.TransferResult
 import dev.ronova.gryphonis.data.sortedFor
 import dev.ronova.gryphonis.ftp.RemoteSession
+import dev.ronova.gryphonis.media.MusicPlayer
 import dev.ronova.gryphonis.util.OpenUtil
 import dev.ronova.gryphonis.util.StorageRoot
 import dev.ronova.gryphonis.util.StorageUtil
@@ -48,7 +49,8 @@ sealed interface Screen {
     data class Analyzer(val path: String) : Screen
     data class Text(val path: String) : Screen
     data class Image(val path: String) : Screen
-    data class Audio(val path: String) : Screen
+    data class Audio(val path: String?) : Screen
+    data class Video(val path: String) : Screen
 }
 
 data class Clip(val files: List<File>, val cut: Boolean)
@@ -246,7 +248,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!ensureAccess()) return
         when (item.kind) {
             FileKind.FOLDER -> openDir(item.file)
-            FileKind.AUDIO -> push(Screen.Audio(item.path))
+            FileKind.AUDIO -> {
+                MusicPlayer.play(getApplication(), item.file)
+                push(Screen.Audio(item.path))
+            }
+            FileKind.VIDEO -> push(Screen.Video(item.path))
             FileKind.IMAGE -> push(Screen.Image(item.path))
             FileKind.TEXT -> push(Screen.Text(item.path))
             else -> if (item.extension == "zip") zipTarget.value = item else openExternal(item.file)
@@ -255,6 +261,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openExternal(file: File) {
         if (!OpenUtil.open(getApplication(), file)) say(R.string.no_app_to_open)
+    }
+
+    /** Открывает полноэкранный плеер для уже играющей музыки (из мини-плеера или уведомления). */
+    fun showPlayer() {
+        if (!MusicPlayer.hasMedia) return
+        if (overlays.lastOrNull() !is Screen.Audio) push(Screen.Audio(null))
     }
 
     fun openAsText(file: File) {
