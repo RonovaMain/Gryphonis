@@ -42,19 +42,13 @@ import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.data.kindOf
 import dev.ronova.gryphonis.ui.components.FileTypeBadge
 import dev.ronova.gryphonis.util.OpenUtil
+import dev.ronova.gryphonis.util.queueFiles
 import java.io.File
 
 @Composable
-fun ImageViewerScreen(startPath: String, onBack: () -> Unit) {
+fun ImageViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val images = remember(startPath) {
-        val start = File(startPath)
-        val siblings = start.parentFile?.listFiles()
-            ?.filter { it.isFile && !it.name.startsWith(".") && kindOf(false, it.extension.lowercase()) == FileKind.IMAGE }
-            ?.sortedBy { it.name.lowercase() }
-            ?: listOf(start)
-        if (siblings.isEmpty()) listOf(start) else siblings
-    }
+    val images = remember(startPath, queue) { queueFiles(startPath, queue) }
     var index by remember(startPath) { mutableIntStateOf(images.indexOfFirst { it.path == startPath }.coerceAtLeast(0)) }
     var scale by remember(index) { mutableFloatStateOf(1f) }
     var offset by remember(index) { mutableStateOf(Offset.Zero) }

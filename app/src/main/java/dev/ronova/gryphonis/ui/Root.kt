@@ -132,11 +132,12 @@ fun GryphonisRoot(vm: MainViewModel) {
                                 path = s.path,
                                 onBack = { vm.pop() },
                             )
-                            is Screen.Text -> TextViewerScreen(s.path, onBack = { vm.pop() })
-                            is Screen.Image -> ImageViewerScreen(s.path, onBack = { vm.pop() })
+                            is Screen.Text -> TextViewerScreen(s.path, s.queue, onBack = { vm.pop() })
+                            is Screen.Image -> ImageViewerScreen(s.path, s.queue, onBack = { vm.pop() })
                             is Screen.Audio -> AudioPlayerScreen(s.path, onBack = { vm.pop() })
                             is Screen.Video -> VideoPlayerScreen(
                                 startPath = s.path,
+                                queue = s.queue,
                                 onBack = { vm.pop() },
                                 onOpenWith = { vm.openExternal(it) },
                             )

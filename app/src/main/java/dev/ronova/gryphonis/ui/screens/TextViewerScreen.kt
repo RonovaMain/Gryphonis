@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FormatSize
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.ui.components.ConfirmDialog
+import dev.ronova.gryphonis.util.queueFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,8 +94,11 @@ private fun loadText(file: File): LoadedText {
 }
 
 @Composable
-fun TextViewerScreen(path: String, onBack: () -> Unit) {
-    val file = remember(path) { File(path) }
+fun TextViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit) {
+    val files = remember(startPath, queue) { queueFiles(startPath, queue) }
+    var index by remember(startPath) { mutableIntStateOf(files.indexOfFirst { it.path == startPath }.coerceAtLeast(0)) }
+    val file = files[index.coerceIn(0, files.lastIndex)]
+    val path = file.path
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -136,6 +142,15 @@ fun TextViewerScreen(path: String, onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    if (files.size > 1) {
+                        Text("${index + 1}/${files.size}", style = MaterialTheme.typography.labelMedium)
+                        IconButton(onClick = { if (index > 0) index -= 1 }, enabled = !editing && index > 0) {
+                            Icon(Icons.Rounded.ChevronLeft, contentDescription = null)
+                        }
+                        IconButton(onClick = { if (index < files.lastIndex) index += 1 }, enabled = !editing && index < files.lastIndex) {
+                            Icon(Icons.Rounded.ChevronRight, contentDescription = null)
+                        }
+                    }
                     IconButton(onClick = { fontSize = if (fontSize >= 24) 10 else fontSize + 2 }) {
                         Icon(Icons.Rounded.FormatSize, contentDescription = null)
                     }

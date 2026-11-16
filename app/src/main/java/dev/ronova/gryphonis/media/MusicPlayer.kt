@@ -139,14 +139,13 @@ object MusicPlayer {
 
     // ---------------------------------------------------------------- запуск
 
-    private fun buildQueue(file: File): Pair<List<MediaItem>, Int> {
-        val siblings = file.parentFile?.listFiles()
-            ?.filter { it.isFile && !it.name.startsWith(".") && kindOf(false, it.extension.lowercase()) == FileKind.AUDIO }
-            ?.sortedWith(compareBy<File, String>(String.CASE_INSENSITIVE_ORDER) { it.name })
-            ?.takeIf { it.isNotEmpty() }
-            ?: listOf(file)
-        var startIndex = siblings.indexOfFirst { it.absolutePath == file.absolutePath }.coerceAtLeast(0)
-        var list = siblings
+    private fun buildQueue(file: File, queue: List<File>): Pair<List<MediaItem>, Int> {
+        var list = if (queue.isEmpty()) listOf(file) else queue
+        var startIndex = list.indexOfFirst { it.absolutePath == file.absolutePath }
+        if (startIndex < 0) {
+            list = listOf(file) + list
+            startIndex = 0
+        }
         // очень большие папки режем окном вокруг выбранного трека (иначе очередь не пролезет через Binder)
         if (list.size > 800) {
             val from = (startIndex - 100).coerceAtLeast(0)
@@ -164,17 +163,23 @@ object MusicPlayer {
         return items to startIndex
     }
 
-    /** Играет выбранный файл, очередь — аудиофайлы из той же папки. */
-    fun play(context: Context, file: File) {
+    /** Играет выбранный файл; [queue] — треки в том порядке, в каком они показаны в списке. */
+    fun play(context: Context, file: File, queue: List<File> = emptyList()) {
         scope.launch {
             try {
-                val (items, start) = withContext(Dispatchers.IO) { buildQueue(file) }
+                val (items, start) = withContext(Dispatchers.IO) { buildQueue(file, queue) }
                 val c = awaitController(context)
-                if (c.mediaItemCount > 0 && c.currentMediaItem?.mediaId == file.absolutePath) {
-                    if (!c.isPlaying) c.play()
-                    return@launch
+                val sameFile = c.mediaItemCount > 0 && c.currentMediaItem?.mediaId == file.absolutePath
+                if (sameFile) {
+                    val ids = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }
+                    if (ids == items.map { it.mediaId }) {
+                        if (!c.isPlaying) c.play()
+                        return@launch
+                    }
                 }
-                c.setMediaItems(items, start, 0L)
+                // тот же трек, но другая очередь (например, сменили сортировку) — продолжаем с того же места
+                val resume = if (sameFile) c.currentPosition else 0L
+                c.setMediaItems(items, start, resume)
                 c.prepare()
                 c.play()
             } catch (e: Exception) {

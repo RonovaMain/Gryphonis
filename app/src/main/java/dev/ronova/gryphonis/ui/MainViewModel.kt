@@ -47,10 +47,10 @@ sealed interface Screen {
     data object FtpServer : Screen
     data object Remote : Screen
     data class Analyzer(val path: String) : Screen
-    data class Text(val path: String) : Screen
-    data class Image(val path: String) : Screen
+    data class Text(val path: String, val queue: List<String> = emptyList()) : Screen
+    data class Image(val path: String, val queue: List<String> = emptyList()) : Screen
     data class Audio(val path: String?) : Screen
-    data class Video(val path: String) : Screen
+    data class Video(val path: String, val queue: List<String> = emptyList()) : Screen
 }
 
 data class Clip(val files: List<File>, val cut: Boolean)
@@ -246,15 +246,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun open(item: FileItem) {
         if (!ensureAccess()) return
+        // очередь = файлы того же типа в том порядке, в котором они сейчас показаны (сортировка, скрытые, поиск)
+        val queue = displayed.value.filter { !it.isDirectory && it.kind == item.kind }.map { it.path }
         when (item.kind) {
             FileKind.FOLDER -> openDir(item.file)
             FileKind.AUDIO -> {
-                MusicPlayer.play(getApplication(), item.file)
+                MusicPlayer.play(getApplication(), item.file, queue.map { File(it) })
                 push(Screen.Audio(item.path))
             }
-            FileKind.VIDEO -> push(Screen.Video(item.path))
-            FileKind.IMAGE -> push(Screen.Image(item.path))
-            FileKind.TEXT -> push(Screen.Text(item.path))
+            FileKind.VIDEO -> push(Screen.Video(item.path, queue))
+            FileKind.IMAGE -> push(Screen.Image(item.path, queue))
+            FileKind.TEXT -> push(Screen.Text(item.path, queue))
             else -> if (item.extension == "zip") zipTarget.value = item else openExternal(item.file)
         }
     }

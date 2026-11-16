@@ -192,3 +192,13 @@ object OpenUtil {
         }
     }
 }
+
+/** Очередь файлов для плеера/просмотрщика: порядок как в списке проводника; выбранный файл всегда внутри. */
+fun queueFiles(start: String, queue: List<String>): List<File> {
+    val list = queue.map { File(it) }
+    return when {
+        list.isEmpty() -> listOf(File(start))
+        list.any { it.path == start } -> list
+        else -> listOf(File(start)) + list
+    }
+}

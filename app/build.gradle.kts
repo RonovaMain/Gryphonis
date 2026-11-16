@@ -31,8 +31,8 @@ android {
         applicationId = "dev.ronova.gryphonis"
         minSdk = 26
         targetSdk = 35
-        versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 2
-        versionName = "1.5.2"
+        versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
+        versionName = "1.6.7"
     }
 
     signingConfigs {

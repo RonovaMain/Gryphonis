@@ -90,6 +90,7 @@ import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.data.kindOf
 import dev.ronova.gryphonis.media.MusicPlayer
+import dev.ronova.gryphonis.util.queueFiles
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -119,20 +120,13 @@ private fun speedLabel(s: Float): String = if (s == s.toInt().toFloat()) "${s.to
  * в верхней панели и на экране ошибки есть кнопка «Открыть в другом приложении».
  */
 @Composable
-fun VideoPlayerScreen(startPath: String, onBack: () -> Unit, onOpenWith: (File) -> Unit) {
+fun VideoPlayerScreen(startPath: String, queue: List<String>, onBack: () -> Unit, onOpenWith: (File) -> Unit) {
     val ctx = LocalContext.current
     val view = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val activity = remember(ctx) { ctx.findActivity() }
 
-    val playlist = remember(startPath) {
-        val start = File(startPath)
-        start.parentFile?.listFiles()
-            ?.filter { it.isFile && !it.name.startsWith(".") && kindOf(false, it.extension.lowercase()) == FileKind.VIDEO }
-            ?.sortedWith(compareBy<File, String>(String.CASE_INSENSITIVE_ORDER) { it.name })
-            ?.takeIf { it.isNotEmpty() }
-            ?: listOf(start)
-    }
+    val playlist = remember(startPath, queue) { queueFiles(startPath, queue) }
     var index by remember(startPath) { mutableIntStateOf(playlist.indexOfFirst { it.path == startPath }.coerceAtLeast(0)) }
     val file = playlist[index.coerceIn(0, playlist.lastIndex)]
 
