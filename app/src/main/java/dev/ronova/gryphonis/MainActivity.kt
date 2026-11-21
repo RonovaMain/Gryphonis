@@ -66,6 +66,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        vm.refreshAccess()
+        vm.onForeground(true)
+    }
+
+    override fun onPause() {
+        vm.onForeground(false)
+        super.onPause()
     }
 }

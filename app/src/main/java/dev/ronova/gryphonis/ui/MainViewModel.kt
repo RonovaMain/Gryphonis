@@ -1,6 +1,7 @@
 package dev.ronova.gryphonis.ui
 
 import android.app.Application
+import android.os.FileObserver
 import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,12 +12,18 @@ import androidx.lifecycle.viewModelScope
 import dev.ronova.gryphonis.GryphonisApp
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.data.AppSettings
+import dev.ronova.gryphonis.data.ArchiveOps
+import dev.ronova.gryphonis.data.ClipHub
+import dev.ronova.gryphonis.data.ExtClip
 import dev.ronova.gryphonis.data.FileItem
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.data.FileOps
 import dev.ronova.gryphonis.data.ProgressTracker
 import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.data.TransferResult
+import dev.ronova.gryphonis.data.Trash
+import dev.ronova.gryphonis.data.TrashItem
+import dev.ronova.gryphonis.data.toFileItem
 import dev.ronova.gryphonis.data.sortedFor
 import dev.ronova.gryphonis.ftp.RemoteSession
 import dev.ronova.gryphonis.media.MusicPlayer
@@ -25,6 +32,8 @@ import dev.ronova.gryphonis.util.StorageRoot
 import dev.ronova.gryphonis.util.StorageUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +42,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -46,6 +56,8 @@ sealed interface Screen {
     data object Settings : Screen
     data object FtpServer : Screen
     data object Remote : Screen
+    data object Trash : Screen
+    data class Archive(val path: String) : Screen
     data class Analyzer(val path: String) : Screen
     data class Text(val path: String, val queue: List<String> = emptyList()) : Screen
     data class Image(val path: String, val queue: List<String> = emptyList()) : Screen
@@ -116,6 +128,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val zipTarget = MutableStateFlow<FileItem?>(null)
     val hashResult = MutableStateFlow<Pair<String, String>?>(null)
     val events = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val refreshing = MutableStateFlow(false)
+    val trashItems = MutableStateFlow<List<TrashItem>>(emptyList())
+
+    /** Растёт после каждой завершённой файловой операции — экраны могут перечитать данные. */
+    val fsVersion = MutableStateFlow(0)
+    val extClip: StateFlow<ExtClip?> = ClipHub.state
 
     val displayed: StateFlow<List<FileItem>> = combine(
         rawItems, searchResults, settings, searchQuery, searchRecursive,
@@ -132,9 +150,98 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var loadJob: Job? = null
 
+    // ---------------------------------------------------------------- автообновление
+    private var foreground = false
+    private var observer: FileObserver? = null
+    private var lastSignature: Long? = null
+    private val changeTicks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
     init {
         refreshRoots()
         startSearchRunner()
+        startAutoRefresh()
+        purgeTrash()
+        // новый буфер из FTP/архива заменяет обычный буфер обмена
+        viewModelScope.launch {
+            ClipHub.state.collect { if (it != null) clipboard.value = null }
+        }
+        // кэш файлов, открытых прямо из архивов, чистим при старте
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                File(getApplication<Application>().cacheDir, "archive_open").deleteRecursively()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun startAutoRefresh() {
+        // 1) слушаем папку: файл скачали, создали, удалили — список обновляется сразу
+        viewModelScope.launch {
+            currentDir.collect {
+                lastSignature = null
+                restartObserver()
+            }
+        }
+        viewModelScope.launch {
+            changeTicks.debounce(400).collect { if (foreground && hasAccess) reload(silent = true) }
+        }
+        // 2) запасной вариант: некоторые системы не присылают события — раз в пару секунд сверяем состояние папки
+        viewModelScope.launch {
+            while (true) {
+                delay(2500)
+                if (foreground && hasAccess) pollOnce()
+            }
+        }
+    }
+
+    private suspend fun pollOnce() {
+        val dir = currentDir.value ?: return
+        if (loading.value || TransferManager.busy) return
+        val sig = withContext(Dispatchers.IO) {
+            val names = dir.list()
+            if (names == null) -1L else dir.lastModified() * 31L + names.size
+        }
+        val prev = lastSignature
+        lastSignature = sig
+        if (prev != null && prev != sig) reload(silent = true)
+    }
+
+    private fun restartObserver() {
+        observer?.stopWatching()
+        observer = null
+        val dir = currentDir.value
+        if (!foreground || !hasAccess || dir == null) return
+        val mask = FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_FROM or
+            FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE or FileObserver.DELETE_SELF
+        @Suppress("DEPRECATION")
+        val obs = object : FileObserver(dir.absolutePath, mask) {
+            override fun onEvent(event: Int, path: String?) {
+                changeTicks.tryEmit(Unit)
+            }
+        }
+        obs.startWatching()
+        observer = obs
+    }
+
+    /** Приложение вышло на передний план / свернулось. */
+    fun onForeground(value: Boolean) {
+        foreground = value
+        if (value) {
+            refreshAccess()
+            if (hasAccess) {
+                reload(silent = true)
+                refreshRoots()
+                refreshTrash()
+                purgeTrash()
+            }
+        }
+        restartObserver()
+    }
+
+    override fun onCleared() {
+        observer?.stopWatching()
+        observer = null
+        super.onCleared()
     }
 
     private fun startSearchRunner() {
@@ -186,29 +293,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------------------------------------------------------------- navigation
-    fun reload() {
+    /** silent = true — тихое обновление без полосы загрузки (автообновление, возврат в приложение). */
+    fun reload(silent: Boolean = false): Job? {
         val dir = currentDir.value
         loadJob?.cancel()
         if (dir == null) {
             rawItems.value = emptyList()
             loading.value = false
-            return
+            return null
         }
-        loadJob = viewModelScope.launch {
-            loading.value = true
-            loadError.value = null
+        val job = viewModelScope.launch {
+            if (!silent) {
+                loading.value = true
+                loadError.value = null
+            }
             val res = withContext(Dispatchers.IO) { FileOps.list(dir) }
             if (currentDir.value == dir) {
                 if (res == null) {
                     loadError.value = getApplication<Application>().getString(R.string.cannot_read_folder)
                     rawItems.value = emptyList()
                 } else {
+                    loadError.value = null
                     rawItems.value = res
                 }
                 // убираем из выделения то, чего уже нет
                 selected.update { sel -> sel.filter { File(it).exists() }.toSet() }
                 loading.value = false
             }
+        }
+        loadJob = job
+        return job
+    }
+
+    /** Жест «потянуть вниз» на главной и в папках. */
+    fun pullRefresh() {
+        if (refreshing.value) return
+        viewModelScope.launch {
+            refreshing.value = true
+            refreshRoots()
+            refreshTrash()
+            reload()?.join()
+            delay(350)
+            refreshing.value = false
         }
     }
 
@@ -327,6 +453,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!ensureAccess()) return
         val files = selectedFiles()
         if (files.isEmpty()) return
+        ClipHub.state.value = null
         clipboard.value = Clip(files, cut)
         clearSelection()
         say(if (cut) R.string.cut_n else R.string.copied_n, files.size)
@@ -344,8 +471,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun onTransferResult(r: TransferResult) {
-        reload()
+        reload(silent = true)
         refreshRoots()
+        refreshTrash()
+        fsVersion.update { it + 1 }
         when (r) {
             TransferResult.Success -> say(R.string.done)
             TransferResult.Cancelled -> say(R.string.cancelled)
@@ -365,12 +494,122 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (started && clip.cut) clipboard.value = null
     }
 
-    fun deleteSelected() {
+    /** permanent = false — в корзину приложения, true — безвозвратно. */
+    fun deleteFiles(files: List<File>, permanent: Boolean) {
         if (!ensureAccess()) return
+        val targets = FileOps.dropNested(files)
+        if (targets.isEmpty()) return
+        if (permanent) {
+            transfer(str(R.string.deleting), bytesMode = false) { t -> FileOps.delete(targets, t) }
+        } else {
+            val app = getApplication<Application>()
+            transfer(str(R.string.moving_to_trash)) { t -> Trash.moveToTrash(app, targets, t) }
+        }
+    }
+
+    fun deleteSelected(permanent: Boolean) {
         val files = selectedFiles()
         if (files.isEmpty()) return
         clearSelection()
-        transfer(str(R.string.deleting), bytesMode = false) { t -> FileOps.delete(files, t) }
+        deleteFiles(files, permanent)
+    }
+
+    // ---------------------------------------------------------------- корзина
+    fun refreshTrash() {
+        viewModelScope.launch {
+            trashItems.value = withContext(Dispatchers.IO) { Trash.list(getApplication()) }
+        }
+    }
+
+    private fun purgeTrash() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (TransferManager.busy) return@launch
+            val days = repo.flow.first().trashDays
+            Trash.purgeExpired(getApplication(), days)
+            trashItems.value = Trash.list(getApplication())
+        }
+    }
+
+    fun restoreTrash(items: List<TrashItem>) {
+        if (!ensureAccess() || items.isEmpty()) return
+        transfer(str(R.string.restoring)) { t -> Trash.restore(items, t) }
+    }
+
+    fun deleteTrashForever(items: List<TrashItem>) {
+        if (items.isEmpty()) return
+        transfer(str(R.string.deleting), bytesMode = false) { t -> Trash.deleteForever(items, t) }
+    }
+
+    // ---------------------------------------------------------------- вставка из FTP и архивов
+    fun pasteExternal() {
+        if (!ensureAccess()) return
+        val dest = currentDir.value ?: return
+        when (val c = ClipHub.state.value) {
+            is ExtClip.Remote -> {
+                if (!RemoteSession.connected.value) {
+                    say(R.string.ftp_not_connected)
+                    ClipHub.state.value = null
+                    return
+                }
+                transfer(str(R.string.downloading)) { t -> RemoteSession.download(c.items, dest, t) }
+            }
+            is ExtClip.Archive -> {
+                transfer(str(R.string.unzipping)) { t -> ArchiveOps.extractSelected(c.zip, c.paths, dest, t) }
+            }
+            null -> {}
+        }
+    }
+
+    fun clearExtClip() {
+        ClipHub.state.value = null
+    }
+
+    fun extractFromArchive(zip: File, paths: List<String>, dest: File) {
+        if (!ensureAccess() || paths.isEmpty()) return
+        transfer(str(R.string.unzipping)) { t -> ArchiveOps.extractSelected(zip, paths, dest, t) }
+    }
+
+    fun copyFromArchive(zip: File, paths: List<String>) {
+        if (paths.isEmpty()) return
+        ClipHub.state.value = ExtClip.Archive(zip, paths)
+        say(R.string.archive_copied_n, paths.size)
+    }
+
+    /** Открывает файл из архива: сначала достаём его во временную папку. */
+    fun openArchiveEntry(zip: File, entryPath: String) {
+        if (!ensureAccess()) return
+        val cache = File(getApplication<Application>().cacheDir, "archive_open")
+        var extracted: File? = null
+        TransferManager.run(
+            str(R.string.unzipping),
+            true,
+            onResult = { r ->
+                val f = extracted
+                if (r is TransferResult.Success && f != null) viewModelScope.launch { openFile(f) }
+                if (r is TransferResult.Cancelled) say(R.string.cancelled)
+            },
+        ) { t ->
+            val dir = File(cache, System.nanoTime().toString())
+            ArchiveOps.extractSelected(zip, listOf(entryPath), dir, t)
+            extracted = File(dir, entryPath.trim('/').substringAfterLast('/'))
+        }
+    }
+
+    /** Открывает один файл по пути (не из текущей папки): для анализатора и архивов. */
+    fun openFile(file: File) {
+        if (!ensureAccess()) return
+        val item = file.toFileItem()
+        val queue = listOf(item.path)
+        when (item.kind) {
+            FileKind.AUDIO -> {
+                MusicPlayer.play(getApplication(), file, listOf(file))
+                push(Screen.Audio(item.path))
+            }
+            FileKind.VIDEO -> push(Screen.Video(item.path, queue))
+            FileKind.IMAGE -> push(Screen.Image(item.path, queue))
+            FileKind.TEXT -> push(Screen.Text(item.path, queue))
+            else -> if (item.extension == "zip") push(Screen.Archive(item.path)) else openExternal(file)
+        }
     }
 
     fun rename(item: FileItem, newName: String) {

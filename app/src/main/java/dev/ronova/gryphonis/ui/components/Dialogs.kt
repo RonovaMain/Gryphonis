@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -212,6 +213,79 @@ fun ConfirmDialog(
     )
 }
 
+/**
+ * Удаление: по умолчанию — в корзину. Галочка «Удалить насовсем?» действует только на это одно
+ * удаление: при следующем вызове диалог создаётся заново и галочка снова снята.
+ */
+@Composable
+fun DeleteDialog(
+    files: List<File>,
+    retentionDays: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (permanent: Boolean) -> Unit,
+) {
+    val ctx = LocalContext.current
+    var permanent by remember { mutableStateOf(false) }
+    val targets = remember(files) { FileOps.dropNested(files) }
+    val stats by produceState<FileOps.DeepStats?>(null, targets) {
+        value = withContext(Dispatchers.IO) { FileOps.deepStats(targets) }
+    }
+    val single = targets.singleOrNull()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(if (permanent) R.string.delete_perm_title else R.string.delete_trash_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val message = if (single != null) {
+                    stringResource(
+                        if (permanent) R.string.delete_perm_message_one else R.string.delete_trash_message_one,
+                        single.name,
+                    )
+                } else {
+                    stringResource(
+                        if (permanent) R.string.delete_perm_message_many else R.string.delete_trash_message_many,
+                        targets.size,
+                    )
+                }
+                Text(message)
+                val s = stats
+                Text(
+                    if (s == null) "…" else stringResource(R.string.delete_stats, s.folders, s.files, formatSize(ctx, s.bytes)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!permanent) {
+                    Text(
+                        stringResource(R.string.trash_kept_days, retentionDays),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { permanent = !permanent },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = permanent, onCheckedChange = { permanent = it })
+                    Text(stringResource(R.string.delete_permanently_check))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(permanent) }) {
+                Text(
+                    stringResource(R.string.ok),
+                    color = if (permanent) MaterialTheme.colorScheme.error else Color.Unspecified,
+                )
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
 @Composable
 fun PermissionDialog(onDismiss: () -> Unit, onGrant: () -> Unit) {
     AlertDialog(
@@ -287,6 +361,7 @@ private fun SwitchLine(label: String, checked: Boolean, onChecked: (Boolean) -> 
 fun ZipChoiceDialog(
     item: FileItem,
     onDismiss: () -> Unit,
+    onBrowse: () -> Unit,
     onExtractFolder: () -> Unit,
     onExtractHere: () -> Unit,
     onOpenWith: () -> Unit,
@@ -296,6 +371,7 @@ fun ZipChoiceDialog(
         title = { Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = {
             Column {
+                TextButton(onClick = onBrowse) { Text(stringResource(R.string.archive_browse)) }
                 TextButton(onClick = onExtractFolder) { Text(stringResource(R.string.extract_folder)) }
                 TextButton(onClick = onExtractHere) { Text(stringResource(R.string.extract_here)) }
                 TextButton(onClick = onOpenWith) { Text(stringResource(R.string.open_with)) }

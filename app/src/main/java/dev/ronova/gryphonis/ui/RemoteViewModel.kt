@@ -9,7 +9,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.ronova.gryphonis.GryphonisApp
 import dev.ronova.gryphonis.R
-import dev.ronova.gryphonis.data.Keys
+import dev.ronova.gryphonis.data.ClipHub
+import dev.ronova.gryphonis.data.ExtClip
+import dev.ronova.gryphonis.data.FileOps
+import dev.ronova.gryphonis.data.FtpProfile
+import dev.ronova.gryphonis.data.FtpProfiles
+import dev.ronova.gryphonis.data.ProgressTracker
 import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.data.TransferResult
 import dev.ronova.gryphonis.ftp.RemoteItem
@@ -35,6 +40,8 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var loading by mutableStateOf(false)
         private set
+    var refreshing by mutableStateOf(false)
+        private set
     var path by mutableStateOf("/")
         private set
     var items by mutableStateOf<List<RemoteItem>>(emptyList())
@@ -48,17 +55,19 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         events.tryEmit(text)
     }
 
-    fun connect(host: String, port: Int, user: String, pass: String) {
+    /** Подключение. Если save = true, настройки (и зашифрованный пароль) сохраняются как профиль. */
+    fun connect(profile: FtpProfile, plainPassword: String, save: Boolean) {
         if (connecting) return
         viewModelScope.launch {
             connecting = true
             error = null
             try {
-                withContext(Dispatchers.IO) { RemoteSession.connect(host.trim(), port, user, pass) }
-                repo.set(Keys.REMOTE_HOST, host.trim())
-                repo.set(Keys.REMOTE_PORT, port)
-                repo.set(Keys.REMOTE_USER, user)
-                open("/")
+                withContext(Dispatchers.IO) {
+                    RemoteSession.connect(profile.host.trim(), profile.port, profile.user, plainPassword)
+                }
+                if (save) repo.saveFtpProfile(profile.copy(secret = FtpProfiles.seal(plainPassword)))
+                val start = profile.path.trim().ifEmpty { "/" }
+                if (!load(start) && start != "/") load("/")
             } catch (e: Exception) {
                 error = e.message ?: e.javaClass.simpleName
             } finally {
@@ -67,31 +76,54 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun saveProfile(profile: FtpProfile, plainPassword: String) {
+        viewModelScope.launch { repo.saveFtpProfile(profile.copy(secret = FtpProfiles.seal(plainPassword))) }
+    }
+
+    fun deleteProfile(id: String) {
+        viewModelScope.launch { repo.deleteFtpProfile(id) }
+    }
+
     fun disconnect() {
         viewModelScope.launch(Dispatchers.IO) { RemoteSession.disconnect() }
+        if (ClipHub.state.value is ExtClip.Remote) ClipHub.state.value = null
         items = emptyList()
         selected = emptySet()
         path = "/"
     }
 
-    fun open(target: String) {
-        viewModelScope.launch {
-            loading = true
-            try {
-                val list = withContext(Dispatchers.IO) { RemoteSession.list(target) }
-                items = list.sortedWith(compareBy<RemoteItem> { !it.isDir }.thenBy { it.name.lowercase() })
-                path = target
-                RemoteSession.cwd = target
-                selected = emptySet()
-            } catch (e: Exception) {
-                say(e.message ?: e.javaClass.simpleName)
-            } finally {
-                loading = false
-            }
+    private suspend fun load(target: String): Boolean {
+        loading = true
+        return try {
+            val list = withContext(Dispatchers.IO) { RemoteSession.list(target) }
+            items = list.sortedWith(compareBy<RemoteItem> { !it.isDir }.thenBy { it.name.lowercase() })
+            path = target
+            RemoteSession.cwd = target
+            selected = emptySet()
+            true
+        } catch (e: Exception) {
+            say(e.message ?: e.javaClass.simpleName)
+            false
+        } finally {
+            loading = false
         }
     }
 
+    fun open(target: String) {
+        viewModelScope.launch { load(target) }
+    }
+
     fun refresh() = open(path)
+
+    /** Жест «потянуть вниз». */
+    fun pullRefresh() {
+        if (refreshing) return
+        viewModelScope.launch {
+            refreshing = true
+            load(path)
+            refreshing = false
+        }
+    }
 
     fun up(): Boolean {
         if (path == "/" || path.isEmpty()) return false
@@ -111,7 +143,16 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         selected = items.map { it.path }.toSet()
     }
 
-    private fun run(title: String, bytesMode: Boolean, block: (dev.ronova.gryphonis.data.ProgressTracker) -> Unit) {
+    /** Как в обычных FTP-проводниках: «копировать» здесь, «вставить» — в любой папке на телефоне. */
+    fun copySelected() {
+        val chosen = items.filter { it.path in selected }
+        if (chosen.isEmpty()) return
+        ClipHub.state.value = ExtClip.Remote(chosen)
+        selected = emptySet()
+        say(getApplication<Application>().getString(R.string.ftp_copied_n, chosen.size))
+    }
+
+    private fun run(title: String, bytesMode: Boolean, block: (ProgressTracker) -> Unit) {
         val started = TransferManager.run(title, bytesMode, onResult = { r ->
             when (r) {
                 TransferResult.Success -> say(str(R.string.done))
@@ -130,10 +171,14 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         run(str(R.string.downloading), true) { t -> RemoteSession.download(chosen, dest, t) }
     }
 
-    fun upload(files: List<File>) {
+    /** moveAfter = true — «вырезали» на телефоне: после успешной отправки исходники удаляются. */
+    fun upload(files: List<File>, moveAfter: Boolean = false) {
         if (files.isEmpty()) return
         val target = path
-        run(str(R.string.uploading), true) { t -> RemoteSession.upload(files, target, t) }
+        run(str(R.string.uploading), true) { t ->
+            RemoteSession.upload(files, target, t)
+            if (moveAfter) files.forEach { FileOps.deleteQuiet(it) }
+        }
     }
 
     fun deleteSelected() {

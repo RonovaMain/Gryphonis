@@ -39,6 +39,40 @@ object FileOps {
         return Stats(bytes, files)
     }
 
+    data class DeepStats(val folders: Int, val files: Int, val bytes: Long)
+
+    /** Сколько папок, файлов и байт внутри выбранного (сами выбранные папки тоже считаются). */
+    fun deepStats(roots: List<File>): DeepStats {
+        var folders = 0
+        var files = 0
+        var bytes = 0L
+        fun walk(f: File) {
+            if (isSymlink(f)) {
+                files++
+                return
+            }
+            if (f.isDirectory) {
+                folders++
+                f.listFiles()?.forEach { walk(it) }
+            } else {
+                files++
+                bytes += f.length()
+            }
+        }
+        roots.forEach { walk(it) }
+        return DeepStats(folders, files, bytes)
+    }
+
+    /** Убирает дубликаты и элементы, чья родительская папка тоже выбрана. */
+    fun dropNested(files: List<File>): List<File> {
+        val unique = files.distinctBy { it.absolutePath }
+        val paths = unique.map { it.absolutePath }
+        return unique.filter { f ->
+            val p = f.absolutePath
+            paths.none { other -> other != p && p.startsWith(other + File.separator) }
+        }
+    }
+
     fun countAll(f: File): Int {
         var n = 1
         if (f.isDirectory && !isSymlink(f)) f.listFiles()?.forEach { n += countAll(it) }
@@ -97,7 +131,7 @@ object FileOps {
         }
     }
 
-    private fun copyRec(src: File, dst: File, t: ProgressTracker) {
+    fun copyRec(src: File, dst: File, t: ProgressTracker) {
         t.check()
         if (isSymlink(src)) return
         if (src.isDirectory) {
@@ -131,7 +165,7 @@ object FileOps {
         t.fileDone()
     }
 
-    private fun deleteQuiet(f: File) {
+    fun deleteQuiet(f: File) {
         try {
             f.deleteRecursively()
         } catch (_: Exception) {
@@ -198,7 +232,7 @@ object FileOps {
         }
     }
 
-    private fun openZip(f: File): ZipFile = try {
+    fun openZip(f: File): ZipFile = try {
         ZipFile(f)
     } catch (e: IllegalArgumentException) {
         ZipFile(f, Charset.forName("IBM866"))

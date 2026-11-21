@@ -36,6 +36,8 @@ data class AppSettings(
     val remotePort: Int = 21,
     val remoteUser: String = "",
     val bookmarks: Set<String> = emptySet(),
+    val trashDays: Int = 30,
+    val ftpProfiles: List<FtpProfile> = emptyList(),
 )
 
 object Keys {
@@ -56,6 +58,8 @@ object Keys {
     val REMOTE_PORT = intPreferencesKey("remote_port")
     val REMOTE_USER = stringPreferencesKey("remote_user")
     val BOOKMARKS = stringSetPreferencesKey("bookmarks")
+    val TRASH_DAYS = intPreferencesKey("trash_days")
+    val FTP_PROFILES = stringPreferencesKey("ftp_profiles")
 }
 
 class SettingsRepository(private val context: Context) {
@@ -81,6 +85,8 @@ class SettingsRepository(private val context: Context) {
                 remotePort = p[Keys.REMOTE_PORT] ?: 21,
                 remoteUser = p[Keys.REMOTE_USER] ?: "",
                 bookmarks = p[Keys.BOOKMARKS] ?: emptySet(),
+                trashDays = p[Keys.TRASH_DAYS] ?: 30,
+                ftpProfiles = FtpProfiles.decode(p[Keys.FTP_PROFILES]),
             )
         }
 
@@ -92,6 +98,22 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { p ->
             val cur = p[Keys.BOOKMARKS] ?: emptySet()
             p[Keys.BOOKMARKS] = if (path in cur) cur - path else cur + path
+        }
+    }
+
+    suspend fun saveFtpProfile(profile: FtpProfile) {
+        context.dataStore.edit { p ->
+            val cur = FtpProfiles.decode(p[Keys.FTP_PROFILES])
+            val idx = cur.indexOfFirst { it.id == profile.id }
+            val next = if (idx >= 0) cur.toMutableList().also { it[idx] = profile } else cur + profile
+            p[Keys.FTP_PROFILES] = FtpProfiles.encode(next)
+        }
+    }
+
+    suspend fun deleteFtpProfile(id: String) {
+        context.dataStore.edit { p ->
+            val cur = FtpProfiles.decode(p[Keys.FTP_PROFILES])
+            p[Keys.FTP_PROFILES] = FtpProfiles.encode(cur.filter { it.id != id })
         }
     }
 }

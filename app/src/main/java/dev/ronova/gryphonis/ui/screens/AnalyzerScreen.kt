@@ -1,7 +1,9 @@
 package dev.ronova.gryphonis.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,11 +48,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.data.AnalysisResult
 import dev.ronova.gryphonis.data.Analyzer
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.ui.MainViewModel
+import dev.ronova.gryphonis.ui.components.DeleteDialog
 import dev.ronova.gryphonis.ui.components.FileThumb
 import dev.ronova.gryphonis.ui.components.GradientFolderIcon
 import dev.ronova.gryphonis.util.formatSize
@@ -81,40 +90,89 @@ private fun kindLabel(kind: FileKind): String = stringResource(
     }
 )
 
+/**
+ * Анализ места. Можно заходить в подпапки (анализ продолжается внутри), а долгим нажатием
+ * выбирать папки и файлы и удалять их прямо отсюда.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
     val ctx = LocalContext.current
-    val root = remember(path) { File(path) }
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val version by vm.fsVersion.collectAsStateWithLifecycle()
+
+    var current by remember(path) { mutableStateOf(File(path)) }
+    val stack = remember(path) { mutableStateListOf<File>() }
     var scanned by remember(path) { mutableIntStateOf(0) }
     var result by remember(path) { mutableStateOf<AnalysisResult?>(null) }
+    var selected by remember(path) { mutableStateOf(setOf<String>()) }
+    var deleteTargets by remember { mutableStateOf<List<File>?>(null) }
 
-    LaunchedEffect(path) {
+    // перечитываем при заходе в папку и после любого удаления/копирования
+    LaunchedEffect(current, version) {
         result = null
         scanned = 0
         result = withContext(Dispatchers.IO) {
-            Analyzer.analyze(root, { isActive }) { scanned = it }
+            Analyzer.analyze(current, { isActive }) { scanned = it }
         }
     }
 
+    fun goInto(folder: File) {
+        stack.add(current)
+        current = folder
+        selected = emptySet()
+    }
+
+    fun goBack() {
+        when {
+            selected.isNotEmpty() -> selected = emptySet()
+            stack.isNotEmpty() -> {
+                current = stack.removeAt(stack.lastIndex)
+                selected = emptySet()
+            }
+            else -> onBack()
+        }
+    }
+
+    fun toggle(p: String) {
+        selected = if (p in selected) selected - p else selected + p
+    }
+
+    BackHandler { goBack() }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(stringResource(R.string.tool_analyzer))
-                        Text(
-                            root.absolutePath,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null) }
-                },
-            )
+            if (selected.isNotEmpty()) {
+                TopAppBar(
+                    title = { Text(selected.size.toString()) },
+                    navigationIcon = {
+                        IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Rounded.Close, contentDescription = null) }
+                    },
+                    actions = {
+                        IconButton(onClick = { deleteTargets = selected.map { File(it) } }) {
+                            Icon(Icons.Rounded.Delete, contentDescription = null)
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(stringResource(R.string.tool_analyzer))
+                            Text(
+                                current.absolutePath,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { goBack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null) }
+                    },
+                )
+            }
         },
     ) { padding ->
         val res = result
@@ -127,6 +185,7 @@ fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
                 }
             }
         } else {
+            val anySelected = selected.isNotEmpty()
             LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
                 item {
                     Text(formatSize(ctx, res.totalBytes), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary)
@@ -168,16 +227,23 @@ fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
                     item {
                         Spacer(Modifier.height(20.dp))
                         Text(stringResource(R.string.analyzer_folders), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            stringResource(R.string.analyzer_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     items(res.folders, key = { "f:" + it.first.path }) { (folder, size) ->
+                        val isSel = folder.absolutePath in selected
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    vm.openDir(folder)
-                                    vm.pop()
-                                }
+                                .background(if (isSel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
+                                .combinedClickable(
+                                    onClick = { if (anySelected) toggle(folder.absolutePath) else goInto(folder) },
+                                    onLongClick = { toggle(folder.absolutePath) },
+                                )
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -196,6 +262,16 @@ fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
                             }
                             Spacer(Modifier.width(12.dp))
                             Text(formatSize(ctx, size), style = MaterialTheme.typography.bodySmall)
+                            if (anySelected) {
+                                Checkbox(checked = isSel, onCheckedChange = null)
+                            } else {
+                                IconButton(onClick = {
+                                    vm.openDir(folder)
+                                    vm.pop()
+                                }) {
+                                    Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                     }
                 }
@@ -206,14 +282,16 @@ fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
                         Text(stringResource(R.string.analyzer_largest), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                     }
                     items(res.largest, key = { "l:" + it.path }) { item ->
+                        val isSel = item.path in selected
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    item.file.parentFile?.let { vm.openDir(it) }
-                                    vm.pop()
-                                }
+                                .background(if (isSel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
+                                .combinedClickable(
+                                    onClick = { if (anySelected) toggle(item.path) else vm.openFile(item.file) },
+                                    onLongClick = { toggle(item.path) },
+                                )
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -231,10 +309,33 @@ fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
                             }
                             Spacer(Modifier.width(12.dp))
                             Text(formatSize(ctx, item.size), style = MaterialTheme.typography.bodySmall)
+                            if (anySelected) {
+                                Checkbox(checked = isSel, onCheckedChange = null)
+                            } else {
+                                IconButton(onClick = {
+                                    item.file.parentFile?.let { vm.openDir(it) }
+                                    vm.pop()
+                                }) {
+                                    Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    deleteTargets?.let { targets ->
+        DeleteDialog(
+            files = targets,
+            retentionDays = settings.trashDays,
+            onDismiss = { deleteTargets = null },
+            onConfirm = { permanent ->
+                deleteTargets = null
+                selected = emptySet()
+                vm.deleteFiles(targets, permanent)
+            },
+        )
     }
 }

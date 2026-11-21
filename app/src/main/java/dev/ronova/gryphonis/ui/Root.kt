@@ -52,6 +52,7 @@ import dev.ronova.gryphonis.ui.components.PermissionDialog
 import dev.ronova.gryphonis.ui.components.TransferDialog
 import dev.ronova.gryphonis.ui.components.ZipChoiceDialog
 import dev.ronova.gryphonis.ui.screens.AnalyzerScreen
+import dev.ronova.gryphonis.ui.screens.ArchiveScreen
 import dev.ronova.gryphonis.ui.screens.AudioPlayerScreen
 import dev.ronova.gryphonis.ui.screens.BrowserScreen
 import dev.ronova.gryphonis.ui.screens.FtpServerScreen
@@ -59,6 +60,7 @@ import dev.ronova.gryphonis.ui.screens.ImageViewerScreen
 import dev.ronova.gryphonis.ui.screens.RemoteScreen
 import dev.ronova.gryphonis.ui.screens.SettingsScreen
 import dev.ronova.gryphonis.ui.screens.TextViewerScreen
+import dev.ronova.gryphonis.ui.screens.TrashScreen
 import dev.ronova.gryphonis.ui.screens.VideoPlayerScreen
 import dev.ronova.gryphonis.util.StorageUtil
 
@@ -127,6 +129,8 @@ fun GryphonisRoot(vm: MainViewModel) {
                             is Screen.Settings -> SettingsScreen(vm, onBack = { vm.pop() })
                             is Screen.FtpServer -> FtpServerScreen(vm, onBack = { vm.pop() })
                             is Screen.Remote -> RemoteScreen(vm, onBack = { vm.pop() })
+                            is Screen.Trash -> TrashScreen(vm, onBack = { vm.pop() })
+                            is Screen.Archive -> ArchiveScreen(vm, s.path, onBack = { vm.pop() })
                             is Screen.Analyzer -> AnalyzerScreen(
                                 vm = vm,
                                 path = s.path,
@@ -173,6 +177,10 @@ fun GryphonisRoot(vm: MainViewModel) {
         ZipChoiceDialog(
             item = item,
             onDismiss = { vm.zipTarget.value = null },
+            onBrowse = {
+                vm.zipTarget.value = null
+                vm.push(Screen.Archive(item.path))
+            },
             onExtractFolder = {
                 vm.zipTarget.value = null
                 vm.unzip(item, here = false)

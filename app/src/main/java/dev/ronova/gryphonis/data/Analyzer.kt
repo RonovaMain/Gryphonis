@@ -36,7 +36,7 @@ object Analyzer {
             counts[item.kind] = (counts[item.kind] ?: 0) + 1
             bytes[item.kind] = (bytes[item.kind] ?: 0L) + item.size
             heap.add(item)
-            if (heap.size > 50) heap.poll()
+            if (heap.size > 100) heap.poll()
             if (totalFiles % 200 == 0) onProgress(totalFiles)
             return item.size
         }
@@ -56,7 +56,7 @@ object Analyzer {
             totalFiles = totalFiles,
             byKind = byKind,
             largest = heap.sortedByDescending { it.size },
-            folders = folders.sortedByDescending { it.second }.take(12),
+            folders = folders.sortedByDescending { it.second }.take(300),
         )
     }
 }

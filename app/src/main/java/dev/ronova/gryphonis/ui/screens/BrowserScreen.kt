@@ -76,6 +76,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,12 +100,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.data.FileItem
 import dev.ronova.gryphonis.data.FileKind
+import dev.ronova.gryphonis.data.ExtClip
 import dev.ronova.gryphonis.data.Keys
+import dev.ronova.gryphonis.data.TrashItem
 import dev.ronova.gryphonis.ftp.RemoteSession
 import dev.ronova.gryphonis.ui.MainViewModel
 import dev.ronova.gryphonis.ui.Screen
 import dev.ronova.gryphonis.ui.components.CreateDialog
-import dev.ronova.gryphonis.ui.components.ConfirmDialog
+import dev.ronova.gryphonis.ui.components.DeleteDialog
 import dev.ronova.gryphonis.ui.components.FileThumb
 import dev.ronova.gryphonis.ui.components.GradientFolderIcon
 import dev.ronova.gryphonis.ui.components.PropertiesDialog
@@ -134,12 +137,15 @@ fun BrowserScreen(vm: MainViewModel) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val roots by vm.roots.collectAsStateWithLifecycle()
     val remoteConnected by RemoteSession.connected.collectAsStateWithLifecycle()
+    val refreshing by vm.refreshing.collectAsStateWithLifecycle()
+    val extClip by vm.extClip.collectAsStateWithLifecycle()
+    val trash by vm.trashItems.collectAsStateWithLifecycle()
 
     var menuOpen by remember { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
     var showCreate by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
-    var showDelete by remember { mutableStateOf(false) }
+    var deleteTargets by remember { mutableStateOf<List<File>?>(null) }
     var showZipName by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<FileItem?>(null) }
     var propsTarget by remember { mutableStateOf<FileItem?>(null) }
@@ -158,7 +164,8 @@ fun BrowserScreen(vm: MainViewModel) {
     }
 
     fun requestDelete() {
-        if (settings.confirmDelete) showDelete = true else vm.deleteSelected()
+        // без подтверждения всё равно уходит в корзину — безвозвратно удалить можно только через диалог
+        if (settings.confirmDelete) deleteTargets = selectedItems.map { it.file } else vm.deleteSelected(false)
     }
 
     Scaffold(
@@ -388,7 +395,34 @@ fun BrowserScreen(vm: MainViewModel) {
         },
         bottomBar = {
             val clip = clipboard
-            if (clip != null && currentDirectory != null && !selectionMode) {
+            val ext = extClip
+            if (ext != null && currentDirectory != null && !selectionMode) {
+                Surface(tonalElevation = 3.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (ext is ExtClip.Remote) Icons.Rounded.Cloud else Icons.Rounded.Archive,
+                            contentDescription = null,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        val count = when (ext) {
+                            is ExtClip.Remote -> ext.items.size
+                            is ExtClip.Archive -> ext.paths.size
+                        }
+                        Text(
+                            stringResource(
+                                if (ext is ExtClip.Remote) R.string.paste_ftp_n else R.string.paste_archive_n,
+                                count,
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { vm.clearExtClip() }) { Text(stringResource(R.string.cancel)) }
+                        Button(onClick = { vm.pasteExternal() }) { Text(stringResource(R.string.paste)) }
+                    }
+                }
+            } else if (clip != null && currentDirectory != null && !selectionMode) {
                 Surface(tonalElevation = 3.dp) {
                     Row(
                         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -425,9 +459,13 @@ fun BrowserScreen(vm: MainViewModel) {
             } else {
                 Spacer(Modifier.height(4.dp))
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = { vm.pullRefresh() },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) {
                 if (currentDirectory == null) {
-                    HomeContent(vm, roots, settings.bookmarks)
+                    HomeContent(vm, roots, settings.bookmarks, trash)
                 } else if (loadError != null) {
                     CenterMessage(loadError ?: "")
                 } else if (items.isEmpty() && !loading && !searching) {
@@ -489,15 +527,14 @@ fun BrowserScreen(vm: MainViewModel) {
             onDismiss = { showSort = false },
         )
     }
-    if (showDelete) {
-        ConfirmDialog(
-            title = stringResource(R.string.delete_title),
-            message = stringResource(R.string.delete_message, selected.size),
-            confirmLabel = stringResource(R.string.delete),
-            onDismiss = { showDelete = false },
-            onConfirm = {
-                showDelete = false
-                vm.deleteSelected()
+    deleteTargets?.let { targets ->
+        DeleteDialog(
+            files = targets,
+            retentionDays = settings.trashDays,
+            onDismiss = { deleteTargets = null },
+            onConfirm = { permanent ->
+                deleteTargets = null
+                vm.deleteSelected(permanent)
             },
         )
     }
@@ -553,15 +590,20 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
 
 @Composable
 private fun CenterMessage(text: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-            GradientFolderIcon(Modifier.size(72.dp))
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    // LazyColumn, чтобы жест «потянуть вниз для обновления» работал и в пустой папке
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                    GradientFolderIcon(Modifier.size(72.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
@@ -699,7 +741,7 @@ private fun FileCell(
 // ---------------------------------------------------------------------- home
 
 @Composable
-private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPaths: Set<String>) {
+private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPaths: Set<String>, trash: List<TrashItem>) {
     val ctx = LocalContext.current
     val quick = remember { StorageUtil.quickFolders() }
     val bookmarks = remember(bookmarkPaths) { bookmarkPaths.map { File(it) }.filter { it.isDirectory }.sortedBy { it.name.lowercase() } }
@@ -737,6 +779,37 @@ private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPat
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Card(
+                onClick = { vm.push(Screen.Trash) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.home_trash), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (trash.isEmpty()) {
+                                stringResource(R.string.trash_empty_short)
+                            } else {
+                                stringResource(R.string.trash_summary, trash.size, formatSize(ctx, trash.sumOf { it.size }))
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

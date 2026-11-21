@@ -82,6 +82,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     val s by vm.settings.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
+    var showTrashDays by remember { mutableStateOf(false) }
 
     val version = remember {
         try {
@@ -153,9 +154,14 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
             SwitchRow(
                 Icons.Rounded.Delete,
                 stringResource(R.string.set_confirm_delete),
-                null,
+                stringResource(R.string.set_confirm_delete_sub),
                 s.confirmDelete,
             ) { vm.setPref(Keys.CONFIRM_DELETE, it) }
+            ClickRow(
+                Icons.Rounded.Delete,
+                stringResource(R.string.set_trash_days),
+                stringResource(R.string.set_trash_days_value, s.trashDays),
+            ) { showTrashDays = true }
 
             SettingsHeader(stringResource(R.string.set_network))
             ClickRow(
@@ -227,6 +233,34 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }
             },
             confirmButton = { TextButton(onClick = { showTheme = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (showTrashDays) {
+        AlertDialog(
+            onDismissRequest = { showTrashDays = false },
+            title = { Text(stringResource(R.string.set_trash_days)) },
+            text = {
+                Column {
+                    for (days in listOf(7, 14, 30, 60, 90)) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    vm.setPref(Keys.TRASH_DAYS, days)
+                                    showTrashDays = false
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = s.trashDays == days, onClick = {
+                                vm.setPref(Keys.TRASH_DAYS, days)
+                                showTrashDays = false
+                            })
+                            Text(stringResource(R.string.set_trash_days_value, days))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTrashDays = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     if (showSort) {
