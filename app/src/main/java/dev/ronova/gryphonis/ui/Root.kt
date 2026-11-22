@@ -165,23 +165,23 @@ fun GryphonisRoot(vm: MainViewModel) {
                 ) { state ->
                     val screen = state.screen
                     if (screen != null) Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
-                        when (val s = screen) {
+                        when (screen) {
                             is Screen.Settings -> SettingsScreen(vm, onBack = { vm.pop() })
                             is Screen.FtpServer -> FtpServerScreen(vm, onBack = { vm.pop() })
                             is Screen.Remote -> RemoteScreen(vm, onBack = { vm.pop() })
                             is Screen.Trash -> TrashScreen(vm, onBack = { vm.pop() })
-                            is Screen.Archive -> ArchiveScreen(vm, s.path, onBack = { vm.pop() })
+                            is Screen.Archive -> ArchiveScreen(vm, screen.path, onBack = { vm.pop() })
                             is Screen.Analyzer -> AnalyzerScreen(
                                 vm = vm,
-                                path = s.path,
+                                path = screen.path,
                                 onBack = { vm.pop() },
                             )
-                            is Screen.Text -> TextViewerScreen(s.path, s.queue, onBack = { vm.pop() })
-                            is Screen.Image -> ImageViewerScreen(s.path, s.queue, onBack = { vm.pop() })
-                            is Screen.Audio -> AudioPlayerScreen(s.path, onBack = { vm.pop() })
+                            is Screen.Text -> TextViewerScreen(screen.path, screen.queue, onBack = { vm.pop() })
+                            is Screen.Image -> ImageViewerScreen(screen.path, screen.queue, onBack = { vm.pop() })
+                            is Screen.Audio -> AudioPlayerScreen(screen.path, onBack = { vm.pop() })
                             is Screen.Video -> VideoPlayerScreen(
-                                startPath = s.path,
-                                queue = s.queue,
+                                startPath = screen.path,
+                                queue = screen.queue,
                                 onBack = { vm.pop() },
                                 onOpenWith = { vm.openExternal(it) },
                             )
