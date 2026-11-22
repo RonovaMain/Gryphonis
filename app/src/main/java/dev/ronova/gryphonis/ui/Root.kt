@@ -6,6 +6,19 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +76,8 @@ import dev.ronova.gryphonis.ui.screens.TextViewerScreen
 import dev.ronova.gryphonis.ui.screens.TrashScreen
 import dev.ronova.gryphonis.ui.screens.VideoPlayerScreen
 import dev.ronova.gryphonis.util.StorageUtil
+
+private data class OverlayState(val screen: Screen?, val depth: Int)
 
 /** Возвращает функцию, которая запрашивает доступ к файлам (экран настроек на Android 11+). */
 @Composable
@@ -122,10 +137,35 @@ fun GryphonisRoot(vm: MainViewModel) {
                 PermissionScreen(onGrant = requestAccess)
             } else {
                 BrowserScreen(vm)
-                if (vm.overlays.isNotEmpty()) {
-                    BackHandler { vm.pop() }
-                    Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
-                        when (val s = vm.overlays.last()) {
+                BackHandler(enabled = vm.overlays.isNotEmpty()) { vm.pop() }
+                // Экраны поверх проводника выезжают справа и уходят обратно плавно
+                AnimatedContent(
+                    targetState = OverlayState(vm.overlays.lastOrNull(), vm.overlays.size),
+                    transitionSpec = {
+                        if (targetState.depth >= initialState.depth) {
+                            ContentTransform(
+                                targetContentEnter = slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) { it / 5 } +
+                                    fadeIn(tween(240)),
+                                initialContentExit = ExitTransition.None,
+                                targetContentZIndex = 1f,
+                                sizeTransform = null,
+                            )
+                        } else {
+                            ContentTransform(
+                                targetContentEnter = EnterTransition.None,
+                                initialContentExit = slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 5 } +
+                                    fadeOut(tween(220)),
+                                targetContentZIndex = -1f,
+                                sizeTransform = null,
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "overlay",
+                ) { state ->
+                    val screen = state.screen
+                    if (screen != null) Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
+                        when (val s = screen) {
                             is Screen.Settings -> SettingsScreen(vm, onBack = { vm.pop() })
                             is Screen.FtpServer -> FtpServerScreen(vm, onBack = { vm.pop() })
                             is Screen.Remote -> RemoteScreen(vm, onBack = { vm.pop() })
@@ -159,7 +199,11 @@ fun GryphonisRoot(vm: MainViewModel) {
             )
         }
 
-        if (showMini) {
+        AnimatedVisibility(
+            visible = showMini,
+            enter = slideInVertically(tween(250)) { it } + fadeIn(tween(250)),
+            exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(200)),
+        ) {
             MiniPlayer(
                 onOpen = { vm.showPlayer() },
                 modifier = Modifier.navigationBarsPadding(),

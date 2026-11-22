@@ -24,7 +24,9 @@ object FileOps {
         false
     }
 
-    fun list(dir: File): List<FileItem>? = dir.listFiles()?.map { it.toFileItem() }
+    /** Скрытые «.trashed-…» — это содержимое корзины, в списках папок их не показываем. */
+    fun list(dir: File): List<FileItem>? =
+        dir.listFiles()?.filter { !Trash.isTrashName(it.name) }?.map { it.toFileItem() }
 
     fun scan(f: File, t: ProgressTracker? = null): Stats {
         t?.check()
@@ -285,10 +287,13 @@ object FileOps {
         limit: Int = 1000,
     ) {
         var found = 0
-        val walk = root.walkTopDown().onEnter { dir -> dir == root || showHidden || !dir.name.startsWith(".") }
+        val walk = root.walkTopDown().onEnter { dir ->
+            dir == root || (!Trash.isTrashName(dir.name) && (showHidden || !dir.name.startsWith(".")))
+        }
         for (f in walk) {
             if (!shouldContinue()) return
             if (f == root) continue
+            if (Trash.isTrashName(f.name)) continue
             if (!showHidden && f.name.startsWith(".")) continue
             if (f.name.contains(query, ignoreCase = true)) {
                 onFound(f.toFileItem())

@@ -316,6 +316,7 @@ fun RemoteScreen(vm: MainViewModel, onBack: () -> Unit) {
                                     val anySel = rvm.selected.isNotEmpty()
                                     Row(
                                         Modifier
+                                            .animateItem()
                                             .fillMaxWidth()
                                             .background(
                                                 if (isSel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent

@@ -19,6 +19,16 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -170,8 +180,14 @@ fun BrowserScreen(vm: MainViewModel) {
 
     Scaffold(
         topBar = {
-            when {
-                selectionMode -> TopAppBar(
+            val topMode = if (selectionMode) 1 else if (searchOpen) 2 else 0
+            AnimatedContent(
+                targetState = topMode,
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                label = "topbar",
+            ) { mode ->
+            when (mode) {
+                1 -> TopAppBar(
                     title = { Text(selected.size.toString()) },
                     navigationIcon = {
                         IconButton(onClick = { vm.clearSelection() }) { Icon(Icons.Rounded.Close, contentDescription = null) }
@@ -271,7 +287,7 @@ fun BrowserScreen(vm: MainViewModel) {
                     },
                 )
 
-                searchOpen -> TopAppBar(
+                2 -> TopAppBar(
                     title = { SearchField(query) { vm.setQuery(it) } },
                     navigationIcon = {
                         IconButton(onClick = { vm.closeSearch() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null) }
@@ -387,9 +403,14 @@ fun BrowserScreen(vm: MainViewModel) {
                     },
                 )
             }
+            }
         },
         floatingActionButton = {
-            if (currentDirectory != null && !selectionMode && !searchOpen) {
+            AnimatedVisibility(
+                visible = currentDirectory != null && !selectionMode && !searchOpen,
+                enter = scaleIn(tween(200)) + fadeIn(tween(200)),
+                exit = scaleOut(tween(150)) + fadeOut(tween(150)),
+            ) {
                 FloatingActionButton(onClick = { showCreate = true }) { Icon(Icons.Rounded.Add, contentDescription = null) }
             }
         },
@@ -443,7 +464,7 @@ fun BrowserScreen(vm: MainViewModel) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (currentDirectory != null && !searchOpen) {
-                Breadcrumbs(currentDirectory, roots) { vm.openDir(it) }
+                Breadcrumbs(currentDirectory, roots, onHome = { vm.goHome() }) { vm.openDir(it) }
             }
             if (searchOpen) {
                 Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -464,7 +485,12 @@ fun BrowserScreen(vm: MainViewModel) {
                 onRefresh = { vm.pullRefresh() },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
-                if (currentDirectory == null) {
+                AnimatedContent(
+                    targetState = currentDirectory == null,
+                    transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+                    label = "home",
+                ) { isHome ->
+                if (isHome) {
                     HomeContent(vm, roots, settings.bookmarks, trash)
                 } else if (loadError != null) {
                     CenterMessage(loadError ?: "")
@@ -481,6 +507,7 @@ fun BrowserScreen(vm: MainViewModel) {
                     ) {
                         gridItems(items, key = { it.path }) { item ->
                             FileCell(
+                                modifier = Modifier.animateItem(),
                                 item = item,
                                 selected = item.path in selected,
                                 showThumb = settings.showThumbnails,
@@ -493,6 +520,7 @@ fun BrowserScreen(vm: MainViewModel) {
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(items, key = { it.path }) { item ->
                             FileRow(
+                                modifier = Modifier.animateItem(),
                                 item = item,
                                 selected = item.path in selected,
                                 selectionMode = selectionMode,
@@ -504,6 +532,7 @@ fun BrowserScreen(vm: MainViewModel) {
                             )
                         }
                     }
+                }
                 }
             }
         }
@@ -609,7 +638,7 @@ private fun CenterMessage(text: String) {
 }
 
 @Composable
-private fun Breadcrumbs(dir: File, roots: List<StorageRoot>, onOpen: (File) -> Unit) {
+private fun Breadcrumbs(dir: File, roots: List<StorageRoot>, onHome: () -> Unit, onOpen: (File) -> Unit) {
     val segments = remember(dir, roots) {
         val list = ArrayList<Pair<String, File>>()
         val root = roots.firstOrNull { dir.path == it.dir.path || dir.path.startsWith(it.dir.path + "/") }
@@ -631,29 +660,43 @@ private fun Breadcrumbs(dir: File, roots: List<StorageRoot>, onOpen: (File) -> U
         scroll.scrollTo(scroll.maxValue)
     }
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 12.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        segments.forEachIndexed { i, (label, file) ->
-            if (i > 0) {
+        // «Главная» всегда закреплена слева и видна, даже если путь длинный и крошки прокручены
+        Icon(
+            Icons.Rounded.Home,
+            contentDescription = stringResource(R.string.nav_home),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onHome)
+                .padding(horizontal = 6.dp, vertical = 6.dp)
+                .size(22.dp),
+        )
+        Row(
+            Modifier.weight(1f).horizontalScroll(scroll),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            segments.forEachIndexed { i, (label, file) ->
                 Icon(
                     Icons.Rounded.ChevronRight,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                val last = i == segments.lastIndex
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (last) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(enabled = !last) { onOpen(file) }
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                    maxLines = 1,
+                )
             }
-            val last = i == segments.lastIndex
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (last) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = !last) { onOpen(file) }
-                    .padding(horizontal = 6.dp, vertical = 8.dp),
-                maxLines = 1,
-            )
         }
     }
 }
@@ -661,6 +704,7 @@ private fun Breadcrumbs(dir: File, roots: List<StorageRoot>, onOpen: (File) -> U
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileRow(
+    modifier: Modifier = Modifier,
     item: FileItem,
     selected: Boolean,
     selectionMode: Boolean,
@@ -671,9 +715,13 @@ private fun FileRow(
     onLong: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent
+    val bg by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent,
+        animationSpec = tween(150),
+        label = "rowBg",
+    )
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(bg)
             .combinedClickable(onClick = onClick, onLongClick = onLong)
@@ -711,15 +759,20 @@ private fun FileRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileCell(
+    modifier: Modifier = Modifier,
     item: FileItem,
     selected: Boolean,
     showThumb: Boolean,
     onClick: () -> Unit,
     onLong: () -> Unit,
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val bg by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        animationSpec = tween(150),
+        label = "cellBg",
+    )
     Column(
-        Modifier
+        modifier
             .clip(RoundedCornerShape(14.dp))
             .background(bg)
             .combinedClickable(onClick = onClick, onLongClick = onLong)

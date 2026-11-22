@@ -219,4 +219,5 @@
     <string name="ftp_profile_name">Name</string>
     <string name="ftp_start_folder">Start folder</string>
     <string name="ftp_save_connection">Save this connection</string>
+    <string name="nav_home">Home</string>
 </resources>

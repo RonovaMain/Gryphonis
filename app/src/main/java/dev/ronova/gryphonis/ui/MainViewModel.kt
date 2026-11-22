@@ -343,6 +343,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         currentDir.value = dir
         selected.value = emptySet()
         closeSearch()
+        rawItems.value = emptyList() // старые элементы плавно исчезают, новые плавно появляются
         reload()
     }
 
@@ -350,6 +351,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         currentDir.value = null
         selected.value = emptySet()
         closeSearch()
+        rawItems.value = emptyList()
         reload()
     }
 
@@ -360,6 +362,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val parent = dir.parentFile
         selected.value = emptySet()
         closeSearch()
+        rawItems.value = emptyList()
         if (isRoot || parent == null) {
             currentDir.value = null
             reload()
@@ -503,7 +506,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             transfer(str(R.string.deleting), bytesMode = false) { t -> FileOps.delete(targets, t) }
         } else {
             val app = getApplication<Application>()
-            transfer(str(R.string.moving_to_trash)) { t -> Trash.moveToTrash(app, targets, t) }
+            transfer(str(R.string.moving_to_trash), bytesMode = false) { t -> Trash.moveToTrash(app, targets, t) }
         }
     }
 
@@ -532,12 +535,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun restoreTrash(items: List<TrashItem>) {
         if (!ensureAccess() || items.isEmpty()) return
-        transfer(str(R.string.restoring)) { t -> Trash.restore(items, t) }
+        val app = getApplication<Application>()
+        transfer(str(R.string.restoring), bytesMode = false) { t -> Trash.restore(app, items, t) }
     }
 
     fun deleteTrashForever(items: List<TrashItem>) {
         if (items.isEmpty()) return
-        transfer(str(R.string.deleting), bytesMode = false) { t -> Trash.deleteForever(items, t) }
+        val app = getApplication<Application>()
+        transfer(str(R.string.deleting), bytesMode = false) { t -> Trash.deleteForever(app, items, t) }
     }
 
     // ---------------------------------------------------------------- вставка из FTP и архивов

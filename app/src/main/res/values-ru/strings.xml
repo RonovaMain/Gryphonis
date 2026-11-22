@@ -219,4 +219,5 @@
     <string name="ftp_profile_name">Название</string>
     <string name="ftp_start_folder">Папка при входе</string>
     <string name="ftp_save_connection">Сохранить это подключение</string>
+    <string name="nav_home">Главная</string>
 </resources>

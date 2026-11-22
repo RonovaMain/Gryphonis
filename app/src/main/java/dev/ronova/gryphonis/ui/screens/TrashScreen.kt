@@ -148,6 +148,7 @@ fun TrashScreen(vm: MainViewModel, onBack: () -> Unit) {
                     }
                     Row(
                         Modifier
+                            .animateItem()
                             .fillMaxWidth()
                             .background(if (isSel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else Color.Transparent)
                             .combinedClickable(onClick = toggle, onLongClick = toggle)
