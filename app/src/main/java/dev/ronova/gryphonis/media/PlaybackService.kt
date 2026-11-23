@@ -5,11 +5,13 @@ import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dev.ronova.gryphonis.MainActivity
 import dev.ronova.gryphonis.R
+import dev.ronova.gryphonis.stream.AppDataSourceFactory
 
 /**
  * Фоновое воспроизведение музыки. Media3 сам рисует уведомление-плеер
@@ -22,6 +24,7 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(AppDataSourceFactory(this)))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

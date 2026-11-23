@@ -220,4 +220,5 @@
     <string name="ftp_start_folder">Папка при входе</string>
     <string name="ftp_save_connection">Сохранить это подключение</string>
     <string name="nav_home">Главная</string>
+    <string name="archive_uri_unsupported">Не удалось открыть архив из этого приложения. Откройте его из проводника.</string>
 </resources>

@@ -23,11 +23,18 @@ import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.data.TransferResult
 import dev.ronova.gryphonis.data.Trash
 import dev.ronova.gryphonis.data.TrashItem
+import dev.ronova.gryphonis.data.kindOf
 import dev.ronova.gryphonis.data.toFileItem
 import dev.ronova.gryphonis.data.sortedFor
 import dev.ronova.gryphonis.ftp.RemoteSession
 import dev.ronova.gryphonis.media.MusicPlayer
+import dev.ronova.gryphonis.data.ArchiveEntry
+import dev.ronova.gryphonis.data.ArchiveFormat
+import dev.ronova.gryphonis.ftp.RemoteItem
+import dev.ronova.gryphonis.stream.MediaRef
+import dev.ronova.gryphonis.stream.StreamSource
 import dev.ronova.gryphonis.util.OpenUtil
+import dev.ronova.gryphonis.util.UriPaths
 import dev.ronova.gryphonis.util.StorageRoot
 import dev.ronova.gryphonis.util.StorageUtil
 import kotlinx.coroutines.Dispatchers
@@ -386,7 +393,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             FileKind.VIDEO -> push(Screen.Video(item.path, queue))
             FileKind.IMAGE -> push(Screen.Image(item.path, queue))
             FileKind.TEXT -> push(Screen.Text(item.path, queue))
-            else -> if (item.extension == "zip") zipTarget.value = item else openExternal(item.file)
+            else -> if (ArchiveOps.isBrowsable(item.name)) zipTarget.value = item else openExternal(item.file)
         }
     }
 
@@ -580,23 +587,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         say(R.string.archive_copied_n, paths.size)
     }
 
-    /** Открывает файл из архива: сначала достаём его во временную папку. */
-    fun openArchiveEntry(zip: File, entryPath: String) {
+    /**
+     * Открывает файл из архива без распаковки: картинки, видео, музыка и текст читаются потоком прямо
+     * из архива, остальное (APK, PDF и т.д.) отдаётся другому приложению через StreamProvider.
+     * [siblings] — файлы той же папки архива: из них собирается очередь для листания.
+     */
+    fun openArchiveEntry(zip: File, entry: ArchiveEntry, siblings: List<ArchiveEntry>) {
         if (!ensureAccess()) return
-        val cache = File(getApplication<Application>().cacheDir, "archive_open")
-        var extracted: File? = null
-        TransferManager.run(
-            str(R.string.unzipping),
-            true,
-            onResult = { r ->
-                val f = extracted
-                if (r is TransferResult.Success && f != null) viewModelScope.launch { openFile(f) }
-                if (r is TransferResult.Cancelled) say(R.string.cancelled)
-            },
-        ) { t ->
-            val dir = File(cache, System.nanoTime().toString())
-            ArchiveOps.extractSelected(zip, listOf(entryPath), dir, t)
-            extracted = File(dir, entryPath.trim('/').substringAfterLast('/'))
+        openStream(
+            StreamSource.archive(zip, entry.path, entry.size),
+            siblings.filter { !it.isDir }.map { StreamSource.archive(zip, it.path, it.size) },
+        )
+    }
+
+    /** Открывает файл с FTP потоком, без скачивания; очередь — файлы той же папки сервера. */
+    fun openRemoteFile(item: RemoteItem, siblings: List<RemoteItem>) {
+        openStream(
+            StreamSource.ftp(item.path, item.size),
+            siblings.filter { !it.isDir }.map { StreamSource.ftp(it.path, it.size) },
+        )
+    }
+
+    private fun openStream(src: StreamSource, siblings: List<StreamSource>) {
+        val kind = kindOf(false, src.extension)
+        val id = src.toString()
+        val queue = siblings.filter { kindOf(false, it.extension) == kind }.map { it.toString() }
+        when (kind) {
+            FileKind.AUDIO -> {
+                MusicPlayer.playIds(getApplication(), id, queue)
+                push(Screen.Audio(id))
+            }
+            FileKind.VIDEO -> push(Screen.Video(id, queue))
+            FileKind.IMAGE -> push(Screen.Image(id, queue))
+            FileKind.TEXT -> push(Screen.Text(id, queue))
+            else -> if (!OpenUtil.openStream(getApplication(), src)) say(R.string.no_app_to_open)
+        }
+    }
+
+    fun openExternalRef(ref: MediaRef) {
+        if (!OpenUtil.openRef(getApplication(), ref)) say(R.string.no_app_to_open)
+    }
+
+    /** Архив, открытый из другого приложения («Открыть с помощью Gryphonis»). */
+    fun openArchiveUri(uri: android.net.Uri) {
+        val f = UriPaths.resolve(getApplication(), uri)
+        if (f != null && f.isFile && ArchiveOps.isBrowsable(f.name)) {
+            if (!ensureAccess()) return
+            push(Screen.Archive(f.absolutePath))
+        } else {
+            say(R.string.archive_uri_unsupported)
         }
     }
 
@@ -613,7 +652,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             FileKind.VIDEO -> push(Screen.Video(item.path, queue))
             FileKind.IMAGE -> push(Screen.Image(item.path, queue))
             FileKind.TEXT -> push(Screen.Text(item.path, queue))
-            else -> if (item.extension == "zip") push(Screen.Archive(item.path)) else openExternal(file)
+            else -> if (ArchiveOps.isBrowsable(item.name)) push(Screen.Archive(item.path)) else openExternal(file)
         }
     }
 
@@ -666,8 +705,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun unzip(item: FileItem, here: Boolean) {
         if (!ensureAccess()) return
         val parent = item.file.parentFile ?: return
-        val dest = if (here) parent else FileOps.uniqueTarget(parent, item.file.nameWithoutExtension)
-        transfer(str(R.string.unzipping)) { t -> FileOps.unzip(item.file, dest, t) }
+        val dest = if (here) parent else FileOps.uniqueTarget(parent, ArchiveOps.baseName(item.name))
+        val fmt = ArchiveFormat.of(item.name)
+        transfer(str(R.string.unzipping)) { t ->
+            if (fmt == null || fmt == ArchiveFormat.ZIP) FileOps.unzip(item.file, dest, t) else ArchiveOps.extractAll(item.file, dest, t)
+        }
     }
 
     fun hash(file: File) {

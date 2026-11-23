@@ -196,7 +196,7 @@ fun ArchiveScreen(vm: MainViewModel, zipPath: String, onBack: () -> Unit) {
                                     when {
                                         selected.isNotEmpty() -> toggle(e.path)
                                         e.isDir -> dir = e.path
-                                        else -> vm.openArchiveEntry(zip, e.path)
+                                        else -> vm.openArchiveEntry(zip, e, entries)
                                     }
                                 },
                                 onLongClick = { toggle(e.path) },

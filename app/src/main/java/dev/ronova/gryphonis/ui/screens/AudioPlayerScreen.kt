@@ -73,6 +73,7 @@ import androidx.media3.common.Player
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.media.AudioMeta
 import dev.ronova.gryphonis.media.AudioMetaLoader
+import dev.ronova.gryphonis.stream.displayNameOf
 import dev.ronova.gryphonis.media.MusicPlayer
 import dev.ronova.gryphonis.ui.theme.GryphLilac
 import dev.ronova.gryphonis.ui.theme.GryphPink
@@ -111,8 +112,8 @@ fun AudioPlayerScreen(path: String?, onBack: () -> Unit) {
         }
     }
 
-    val fallbackName = currentPath?.let { File(it).nameWithoutExtension }
-        ?: (path?.let { File(it).nameWithoutExtension } ?: "")
+    val fallbackName = currentPath?.let { displayNameOf(it) }
+        ?: (path?.let { displayNameOf(it) } ?: "")
     val title = meta?.title?.takeIf { it.isNotBlank() } ?: MusicPlayer.title ?: fallbackName
     val sub = listOfNotNull(meta?.artist ?: MusicPlayer.artist, meta?.album)
         .filter { it.isNotBlank() }

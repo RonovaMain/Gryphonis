@@ -4,6 +4,8 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import dev.ronova.gryphonis.stream.MediaRef
+import dev.ronova.gryphonis.stream.StreamMediaDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -20,15 +22,23 @@ object AudioMetaLoader {
     suspend fun load(path: String): AudioMeta = withContext(Dispatchers.IO) {
         val cached = synchronized(cache) { cache[path] }
         if (cached != null) return@withContext cached
-        val meta = read(File(path))
+        val meta = read(MediaRef.of(path))
         synchronized(cache) { cache[path] = meta }
         meta
     }
 
-    private fun read(file: File): AudioMeta {
+    private fun read(ref: MediaRef): AudioMeta {
         val r = MediaMetadataRetriever()
+        var stream: StreamMediaDataSource? = null
         return try {
-            r.setDataSource(file.absolutePath)
+            val local = ref.file
+            if (local != null) {
+                r.setDataSource(local.absolutePath)
+            } else {
+                val ds = StreamMediaDataSource(ref.stream!!)
+                stream = ds
+                r.setDataSource(ds)
+            }
             val pic = r.embeddedPicture
             AudioMeta(
                 title = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE),
@@ -43,6 +53,7 @@ object AudioMetaLoader {
                 r.release()
             } catch (_: Exception) {
             }
+            stream?.close()
         }
     }
 

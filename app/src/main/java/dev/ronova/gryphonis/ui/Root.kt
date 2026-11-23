@@ -183,7 +183,7 @@ fun GryphonisRoot(vm: MainViewModel) {
                                 startPath = screen.path,
                                 queue = screen.queue,
                                 onBack = { vm.pop() },
-                                onOpenWith = { vm.openExternal(it) },
+                                onOpenWith = { vm.openExternalRef(it) },
                             )
                         }
                     }

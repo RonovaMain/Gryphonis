@@ -32,7 +32,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
-        versionName = "1.8.7"
+        versionName = "1.9.0"
     }
 
     signingConfigs {
@@ -110,6 +110,10 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("commons-net:commons-net:3.11.1")
+
+    // Чтение 7z и tar (tar.gz / tar.bz2 / tar.xz) без распаковки. ZIP читается штатным java.util.zip.
+    implementation("org.apache.commons:commons-compress:1.24.0")
+    implementation("org.tukaani:xz:1.9")
 
     // Видео и фоновая музыка (уведомление-плеер)
     implementation("androidx.media3:media3-exoplayer:1.4.1")

@@ -15,6 +15,9 @@ import android.webkit.MimeTypeMap
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import dev.ronova.gryphonis.R
+import dev.ronova.gryphonis.stream.StreamProvider
+import dev.ronova.gryphonis.stream.StreamSource
+import dev.ronova.gryphonis.stream.MediaRef
 import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -164,6 +167,50 @@ object OpenUtil {
         }
     }
 
+    /**
+     * Открывает файл из архива или с FTP в другом приложении без копирования на диск:
+     * приложение получает content://-адрес, а данные идут потоком из источника.
+     * APK отправляется прямо в установщик.
+     */
+    fun openStream(context: Context, src: StreamSource): Boolean {
+        return try {
+            val uri = src.toContentUri(StreamProvider.authority(context))
+            val mime = StreamProvider.mimeOfName(src.name)
+            val view = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, mime)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val intent = if (src.extension == "apk") {
+                view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            } else {
+                Intent.createChooser(view, src.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun openRef(context: Context, ref: MediaRef): Boolean =
+        if (ref.file != null) open(context, ref.file) else openStream(context, ref.stream!!)
+
+    fun shareStream(context: Context, src: StreamSource): Boolean {
+        return try {
+            val uri = src.toContentUri(StreamProvider.authority(context))
+            val intent = Intent(Intent.ACTION_SEND)
+                .setType(StreamProvider.mimeOfName(src.name))
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun shareRef(context: Context, ref: MediaRef): Boolean =
+        if (ref.file != null) share(context, listOf(ref.file)) else shareStream(context, ref.stream!!)
+
     fun share(context: Context, files: List<File>): Boolean {
         if (files.isEmpty()) return false
         return try {
@@ -200,5 +247,37 @@ fun queueFiles(start: String, queue: List<String>): List<File> {
         list.isEmpty() -> listOf(File(start))
         list.any { it.path == start } -> list
         else -> listOf(File(start)) + list
+    }
+}
+
+/** Находит настоящий файл по адресу из другого приложения (file:, документы памяти и «Загрузок», MediaStore). */
+object UriPaths {
+    fun resolve(context: Context, uri: Uri): File? {
+        try {
+            if (uri.scheme == "file") return uri.path?.let { File(it) }
+            if (uri.scheme != "content") return null
+            if (android.provider.DocumentsContract.isDocumentUri(context, uri)) {
+                val id = android.provider.DocumentsContract.getDocumentId(uri)
+                when (uri.authority) {
+                    "com.android.externalstorage.documents" -> {
+                        val volume = id.substringBefore(':')
+                        val rel = id.substringAfter(':', "")
+                        val root = if (volume.equals("primary", ignoreCase = true)) StorageUtil.internalRoot() else File("/storage/$volume")
+                        return File(root, rel).takeIf { it.exists() }
+                    }
+                    "com.android.providers.downloads.documents" -> {
+                        if (id.startsWith("raw:")) return File(id.removePrefix("raw:")).takeIf { it.exists() }
+                    }
+                }
+            }
+            context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val p = c.getString(0)
+                    if (!p.isNullOrBlank()) return File(p).takeIf { it.exists() }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return null
     }
 }

@@ -323,7 +323,11 @@ fun RemoteScreen(vm: MainViewModel, onBack: () -> Unit) {
                                             )
                                             .combinedClickable(
                                                 onClick = {
-                                                    if (anySel || !item.isDir) rvm.toggle(item) else rvm.open(item.path)
+                                                    when {
+                                                        anySel -> rvm.toggle(item)
+                                                        item.isDir -> rvm.open(item.path)
+                                                        else -> vm.openRemoteFile(item, rvm.items)
+                                                    }
                                                 },
                                                 onLongClick = { rvm.toggle(item) },
                                             )

@@ -17,6 +17,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.data.kindOf
+import dev.ronova.gryphonis.stream.MediaRef
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -139,11 +140,11 @@ object MusicPlayer {
 
     // ---------------------------------------------------------------- запуск
 
-    private fun buildQueue(file: File, queue: List<File>): Pair<List<MediaItem>, Int> {
-        var list = if (queue.isEmpty()) listOf(file) else queue
-        var startIndex = list.indexOfFirst { it.absolutePath == file.absolutePath }
+    private fun buildQueue(startId: String, queue: List<String>): Pair<List<MediaItem>, Int> {
+        var list = if (queue.isEmpty()) listOf(startId) else queue
+        var startIndex = list.indexOf(startId)
         if (startIndex < 0) {
-            list = listOf(file) + list
+            list = listOf(startId) + list
             startIndex = 0
         }
         // очень большие папки режем окном вокруг выбранного трека (иначе очередь не пролезет через Binder)
@@ -153,11 +154,12 @@ object MusicPlayer {
             list = list.subList(from, to)
             startIndex -= from
         }
-        val items = list.map { f ->
+        val items = list.map { id ->
+            val ref = MediaRef.of(id)
             MediaItem.Builder()
-                .setMediaId(f.absolutePath)
-                .setUri(Uri.fromFile(f))
-                .setMediaMetadata(MediaMetadata.Builder().setTitle(f.nameWithoutExtension).build())
+                .setMediaId(id)
+                .setUri(ref.uri)
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(ref.nameWithoutExtension).build())
                 .build()
         }
         return items to startIndex
@@ -165,11 +167,19 @@ object MusicPlayer {
 
     /** Играет выбранный файл; [queue] — треки в том порядке, в каком они показаны в списке. */
     fun play(context: Context, file: File, queue: List<File> = emptyList()) {
+        playIds(context, file.absolutePath, queue.map { it.absolutePath })
+    }
+
+    /**
+     * То же для id треков: путь к файлу на телефоне или адрес gstream: (файл из архива или с FTP,
+     * который играет потоком, без копирования).
+     */
+    fun playIds(context: Context, startId: String, queue: List<String> = emptyList()) {
         scope.launch {
             try {
-                val (items, start) = withContext(Dispatchers.IO) { buildQueue(file, queue) }
+                val (items, start) = withContext(Dispatchers.IO) { buildQueue(startId, queue) }
                 val c = awaitController(context)
-                val sameFile = c.mediaItemCount > 0 && c.currentMediaItem?.mediaId == file.absolutePath
+                val sameFile = c.mediaItemCount > 0 && c.currentMediaItem?.mediaId == startId
                 if (sameFile) {
                     val ids = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }
                     if (ids == items.map { it.mediaId }) {

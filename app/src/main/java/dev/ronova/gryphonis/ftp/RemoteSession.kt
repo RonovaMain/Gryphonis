@@ -11,7 +11,9 @@ import org.apache.commons.net.ftp.FTPReply
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.FilterInputStream
 import java.io.IOException
+import java.io.InputStream
 
 data class RemoteItem(
     val name: String,
@@ -47,7 +49,11 @@ object RemoteSession {
     @Volatile
     var label: String = ""
 
-    private fun open(): FTPClient {
+    private class Creds(val host: String, val port: Int, val user: String, val pass: String)
+
+    private fun open(): FTPClient = openWith(host, port, user, pass)
+
+    private fun openWith(host: String, port: Int, user: String, pass: String): FTPClient {
         val c = FTPClient()
         c.connectTimeout = 15_000
         c.defaultTimeout = 30_000
@@ -119,6 +125,68 @@ object RemoteSession {
                 c.disconnect()
             } catch (_: Exception) {
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ streaming
+
+    /**
+     * Читает файл с сервера потоком, начиная с байта [offset], без сохранения на телефон.
+     * Для каждого потока открывается своё соединение, поэтому основная сессия остаётся свободной
+     * для списков и операций. Закрытие потока закрывает соединение.
+     */
+    fun openStream(path: String, offset: Long = 0L): InputStream {
+        val cr = synchronized(lock) {
+            if (host.isEmpty()) throw IOException("Not connected")
+            Creds(host, port, user, pass)
+        }
+        if (offset > 0) {
+            try {
+                return retrieveFrom(cr, path, offset, 0L)
+            } catch (e: IOException) {
+                // сервер не умеет докачку (REST): читаем с начала и пропускаем лишнее
+            }
+            return retrieveFrom(cr, path, 0L, offset)
+        }
+        return retrieveFrom(cr, path, 0L, 0L)
+    }
+
+    private fun retrieveFrom(cr: Creds, path: String, restart: Long, skip: Long): InputStream {
+        val c = openWith(cr.host, cr.port, cr.user, cr.pass)
+        try {
+            c.soTimeout = 30_000
+            @Suppress("DEPRECATION")
+            c.setDataTimeout(30_000)
+            if (restart > 0) c.restartOffset = restart
+            val input = c.retrieveFileStream(path) ?: throw IOException(c.replyString.trim())
+            var left = skip
+            while (left > 0) {
+                val n = input.skip(left)
+                if (n > 0) {
+                    left -= n
+                } else {
+                    if (input.read() < 0) break
+                    left--
+                }
+            }
+            return object : FilterInputStream(input) {
+                override fun close() {
+                    try {
+                        super.close()
+                    } catch (_: Exception) {
+                    }
+                    try {
+                        c.disconnect()
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            try {
+                c.disconnect()
+            } catch (_: Exception) {
+            }
+            throw e
         }
     }
 

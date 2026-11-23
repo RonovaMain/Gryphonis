@@ -49,7 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.ui.components.ConfirmDialog
-import dev.ronova.gryphonis.util.queueFiles
+import dev.ronova.gryphonis.stream.MediaRef
+import dev.ronova.gryphonis.stream.queueRefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,10 +63,10 @@ private const val MAX_BYTES = 1024 * 1024
 
 private class LoadedText(val text: String, val truncated: Boolean, val binary: Boolean, val charset: Charset)
 
-private fun loadText(file: File): LoadedText {
+private fun loadText(file: MediaRef): LoadedText {
     val out = ByteArrayOutputStream()
     var truncated = false
-    FileInputStream(file).use { input ->
+    file.open().use { input ->
         val buf = ByteArray(64 * 1024)
         while (true) {
             val n = input.read(buf)
@@ -95,10 +96,10 @@ private fun loadText(file: File): LoadedText {
 
 @Composable
 fun TextViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit) {
-    val files = remember(startPath, queue) { queueFiles(startPath, queue) }
-    var index by remember(startPath) { mutableIntStateOf(files.indexOfFirst { it.path == startPath }.coerceAtLeast(0)) }
+    val files = remember(startPath, queue) { queueRefs(startPath, queue) }
+    var index by remember(startPath) { mutableIntStateOf(files.indexOfFirst { it.id == startPath }.coerceAtLeast(0)) }
     val file = files[index.coerceIn(0, files.lastIndex)]
-    val path = file.path
+    val path = file.id
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -125,7 +126,7 @@ fun TextViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit)
 
     val l = loaded
     val dirty = editing && l != null && draft != l.text
-    val canEdit = l != null && !l.truncated && !l.binary
+    val canEdit = l != null && !l.truncated && !l.binary && file.isLocal
 
     BackHandler(enabled = true) {
         if (dirty) confirmDiscard = true else onBack()
@@ -168,7 +169,7 @@ fun TextViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit)
                                     scope.launch {
                                         val ok = withContext(Dispatchers.IO) {
                                             try {
-                                                file.writeText(content, l.charset)
+                                                file.file!!.writeText(content, l.charset)
                                                 true
                                             } catch (e: Exception) {
                                                 false

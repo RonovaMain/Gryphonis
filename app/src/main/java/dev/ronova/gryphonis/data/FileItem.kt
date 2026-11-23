@@ -12,7 +12,7 @@ private val TEXT_EXT = setOf(
     "properties", "kt", "kts", "java", "js", "ts", "py", "sh", "bat", "html", "htm", "css", "c", "h",
     "cpp", "hpp", "cs", "go", "rs", "php", "sql", "gradle", "srt", "vtt", "lrc", "gitignore", "env",
 )
-private val ARCHIVE_EXT = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz")
+private val ARCHIVE_EXT = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "tbz", "tbz2", "txz")
 private val DOC_EXT = setOf("doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub", "fb2")
 
 fun kindOf(isDir: Boolean, ext: String): FileKind = when {

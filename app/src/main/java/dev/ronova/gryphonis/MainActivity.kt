@@ -58,8 +58,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_OPEN_PLAYER, false) == true) {
-            intent.removeExtra(EXTRA_OPEN_PLAYER)
+        val i = intent ?: return
+        val data = i.data
+        if (i.action == Intent.ACTION_VIEW && data != null) {
+            i.data = null
+            vm.openArchiveUri(data)
+            return
+        }
+        if (i.getBooleanExtra(EXTRA_OPEN_PLAYER, false)) {
+            i.removeExtra(EXTRA_OPEN_PLAYER)
             vm.showPlayer()
         }
     }

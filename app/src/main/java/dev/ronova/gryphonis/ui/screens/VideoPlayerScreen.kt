@@ -84,13 +84,16 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.data.kindOf
 import dev.ronova.gryphonis.media.MusicPlayer
-import dev.ronova.gryphonis.util.queueFiles
+import dev.ronova.gryphonis.stream.AppDataSourceFactory
+import dev.ronova.gryphonis.stream.MediaRef
+import dev.ronova.gryphonis.stream.queueRefs
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -120,18 +123,19 @@ private fun speedLabel(s: Float): String = if (s == s.toInt().toFloat()) "${s.to
  * в верхней панели и на экране ошибки есть кнопка «Открыть в другом приложении».
  */
 @Composable
-fun VideoPlayerScreen(startPath: String, queue: List<String>, onBack: () -> Unit, onOpenWith: (File) -> Unit) {
+fun VideoPlayerScreen(startPath: String, queue: List<String>, onBack: () -> Unit, onOpenWith: (MediaRef) -> Unit) {
     val ctx = LocalContext.current
     val view = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val activity = remember(ctx) { ctx.findActivity() }
 
-    val playlist = remember(startPath, queue) { queueFiles(startPath, queue) }
-    var index by remember(startPath) { mutableIntStateOf(playlist.indexOfFirst { it.path == startPath }.coerceAtLeast(0)) }
+    val playlist = remember(startPath, queue) { queueRefs(startPath, queue) }
+    var index by remember(startPath) { mutableIntStateOf(playlist.indexOfFirst { it.id == startPath }.coerceAtLeast(0)) }
     val file = playlist[index.coerceIn(0, playlist.lastIndex)]
 
     val exo = remember {
         ExoPlayer.Builder(ctx)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(ctx).setDataSourceFactory(AppDataSourceFactory(ctx)))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -237,7 +241,7 @@ fun VideoPlayerScreen(startPath: String, queue: List<String>, onBack: () -> Unit
         buffering = true
         position = 0L
         duration = 0L
-        exo.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+        exo.setMediaItem(MediaItem.fromUri(file.uri))
         exo.prepare()
         exo.setPlaybackSpeed(speed)
         exo.playWhenReady = true

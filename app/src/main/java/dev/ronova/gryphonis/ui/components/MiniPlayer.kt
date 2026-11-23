@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ronova.gryphonis.media.AudioMeta
 import dev.ronova.gryphonis.media.AudioMetaLoader
+import dev.ronova.gryphonis.stream.displayNameOf
 import dev.ronova.gryphonis.media.MusicPlayer
 import dev.ronova.gryphonis.ui.theme.GryphLilac
 import dev.ronova.gryphonis.ui.theme.GryphPink
@@ -66,7 +67,7 @@ fun MiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     }
     val title = meta?.title?.takeIf { it.isNotBlank() }
         ?: MusicPlayer.title
-        ?: path?.let { File(it).nameWithoutExtension }
+        ?: path?.let { displayNameOf(it) }
         ?: ""
     val artist = (meta?.artist ?: MusicPlayer.artist).orEmpty()
     val duration = MusicPlayer.durationMs

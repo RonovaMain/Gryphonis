@@ -64,8 +64,10 @@ import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.ui.components.FileTypeBadge
+import dev.ronova.gryphonis.stream.MediaRef
+import dev.ronova.gryphonis.stream.StreamImages
+import dev.ronova.gryphonis.stream.queueRefs
 import dev.ronova.gryphonis.util.OpenUtil
-import dev.ronova.gryphonis.util.queueFiles
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
@@ -88,8 +90,8 @@ private fun Context.findActivity(): Activity? {
 fun ImageViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val view = LocalView.current
-    val images = remember(startPath, queue) { queueFiles(startPath, queue) }
-    val startIndex = remember(startPath, images) { images.indexOfFirst { it.path == startPath }.coerceAtLeast(0) }
+    val images = remember(startPath, queue) { queueRefs(startPath, queue) }
+    val startIndex = remember(startPath, images) { images.indexOfFirst { it.id == startPath }.coerceAtLeast(0) }
     val pagerState = rememberPagerState(initialPage = startIndex) { images.size }
 
     var uiVisible by remember { mutableStateOf(true) }
@@ -125,7 +127,7 @@ fun ImageViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit
             modifier = Modifier.fillMaxSize(),
             userScrollEnabled = !zoomed,
             pageSpacing = 12.dp,
-            key = { images[it].path },
+            key = { images[it].id },
         ) { page ->
             ZoomableImagePage(
                 file = images[page],
@@ -150,7 +152,7 @@ fun ImageViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit
                     if (images.size > 1) {
                         Text("${pagerState.currentPage + 1} / ${images.size}", modifier = Modifier.padding(end = 4.dp))
                     }
-                    IconButton(onClick = { OpenUtil.share(ctx, listOf(file)) }) { Icon(Icons.Rounded.Share, contentDescription = null) }
+                    IconButton(onClick = { OpenUtil.shareRef(ctx, file) }) { Icon(Icons.Rounded.Share, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Black.copy(alpha = 0.6f),
@@ -165,7 +167,7 @@ fun ImageViewerScreen(startPath: String, queue: List<String>, onBack: () -> Unit
 
 @Composable
 private fun ZoomableImagePage(
-    file: File,
+    file: MediaRef,
     isCurrent: Boolean,
     onZoomedChange: (Boolean) -> Unit,
     onTap: () -> Unit,
@@ -266,11 +268,12 @@ private fun ZoomableImagePage(
     ) {
         AsyncImage(
             model = ImageRequest.Builder(ctx)
-                .data(file)
+                .data(file.model)
                 .size(2048, 2048)
                 .crossfade(true)
                 .build(),
             contentDescription = file.name,
+            imageLoader = StreamImages.loader(ctx),
             contentScale = ContentScale.Fit,
             onState = { st ->
                 painterState = st
