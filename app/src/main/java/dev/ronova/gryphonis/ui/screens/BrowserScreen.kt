@@ -119,7 +119,7 @@ import dev.ronova.gryphonis.ui.Screen
 import dev.ronova.gryphonis.ui.components.CreateDialog
 import dev.ronova.gryphonis.ui.components.DeleteDialog
 import dev.ronova.gryphonis.ui.components.FileThumb
-import dev.ronova.gryphonis.ui.components.GradientFolderIcon
+import dev.ronova.gryphonis.ui.components.FolderIcon
 import dev.ronova.gryphonis.ui.components.PropertiesDialog
 import dev.ronova.gryphonis.ui.components.SortDialog
 import dev.ronova.gryphonis.ui.components.TextInputDialog
@@ -624,7 +624,7 @@ private fun CenterMessage(text: String) {
         item {
             Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                    GradientFolderIcon(Modifier.size(72.dp))
+                    FolderIcon(Modifier.size(72.dp))
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text,
@@ -880,7 +880,7 @@ private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPat
                                 .width(72.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            GradientFolderIcon(Modifier.size(48.dp))
+                            FolderIcon(Modifier.size(48.dp))
                             Spacer(Modifier.height(4.dp))
                             Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
                         }
@@ -899,7 +899,7 @@ private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPat
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GradientFolderIcon(Modifier.size(40.dp))
+                    FolderIcon(Modifier.size(40.dp))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis)

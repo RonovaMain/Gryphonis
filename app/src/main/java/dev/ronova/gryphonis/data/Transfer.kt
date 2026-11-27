@@ -59,6 +59,16 @@ class ProgressTracker(
         push(true)
     }
 
+    /** Начинает новый этап с нуля (например, «копирование», а затем «установка»). */
+    fun restart(total: Long, files: Int) {
+        done = 0
+        filesDone = 0
+        lastSpeedDone = 0
+        lastSpeedNs = System.nanoTime()
+        speed = 0.0
+        begin(total, files)
+    }
+
     fun file(name: String) {
         check()
         current = name

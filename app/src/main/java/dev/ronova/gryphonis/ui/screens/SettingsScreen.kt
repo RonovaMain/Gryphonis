@@ -21,9 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Brightness4
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -59,28 +61,36 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ronova.gryphonis.R
+import dev.ronova.gryphonis.data.AppPalette
 import dev.ronova.gryphonis.data.Keys
 import dev.ronova.gryphonis.data.SortBy
 import dev.ronova.gryphonis.data.ThemeMode
 import dev.ronova.gryphonis.ui.MainViewModel
 import dev.ronova.gryphonis.ui.Screen
-import dev.ronova.gryphonis.ui.components.GradientFolderIcon
+import dev.ronova.gryphonis.ui.components.FolderIcon
 import dev.ronova.gryphonis.ui.components.SortDialog
 import dev.ronova.gryphonis.ui.theme.GryphLilac
 import dev.ronova.gryphonis.ui.theme.GryphPink
 import dev.ronova.gryphonis.ui.theme.GryphSky
+import dev.ronova.gryphonis.ui.theme.GryphTheme
+import dev.ronova.gryphonis.ui.theme.previewColors
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.luminance
 import dev.ronova.gryphonis.util.OpenUtil
 import dev.ronova.gryphonis.util.StorageUtil
 
 private const val AUTHOR_NAME = "RonovaDev"
 private const val GITHUB_USER = "RonovaMain"
 private const val GITHUB_URL = "https://github.com/RonovaMain"
+private const val DONATE_URL = "https://boosty.to/ronovamain/donate"
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val s by vm.settings.collectAsStateWithLifecycle()
     var showTheme by remember { mutableStateOf(false) }
+    var showPalette by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
     var showTrashDays by remember { mutableStateOf(false) }
 
@@ -116,6 +126,14 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                     }
                 ),
             ) { showTheme = true }
+            ClickRow(
+                Icons.Rounded.ColorLens,
+                stringResource(R.string.set_palette),
+                stringResource(
+                    if (s.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) R.string.set_palette_dynamic_on
+                    else paletteName(s.palette)
+                ),
+            ) { showPalette = true }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 SwitchRow(
                     Icons.Rounded.Palette,
@@ -192,6 +210,12 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 "github.com/$GITHUB_USER",
                 trailing = Icons.Rounded.OpenInNew,
             ) { OpenUtil.openUrl(ctx, GITHUB_URL) }
+            ClickRow(
+                Icons.Rounded.Favorite,
+                stringResource(R.string.about_support),
+                stringResource(R.string.about_support_sub),
+                trailing = Icons.Rounded.OpenInNew,
+            ) { OpenUtil.openUrl(ctx, DONATE_URL) }
             Text(
                 stringResource(R.string.about_libs),
                 style = MaterialTheme.typography.bodySmall,
@@ -233,6 +257,17 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }
             },
             confirmButton = { TextButton(onClick = { showTheme = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (showPalette) {
+        PaletteDialog(
+            current = s.palette,
+            onPick = {
+                vm.setPref(Keys.PALETTE, it.name)
+                // выбор схемы сразу «включает» её: динамические цвета её бы перекрывали
+                if (s.dynamicColor) vm.setPref(Keys.DYNAMIC, false)
+            },
+            onDismiss = { showPalette = false },
         )
     }
     if (showTrashDays) {
@@ -352,36 +387,116 @@ private fun SwitchRow(
 
 @Composable
 private fun AboutCard(version: String) {
+    val rainbow = GryphTheme.extras.rainbow
+    val onCard = if (rainbow) androidx.compose.ui.graphics.Color(0xFF2B1633) else MaterialTheme.colorScheme.onPrimaryContainer
     Box(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(listOf(GryphPink, GryphLilac, GryphSky))),
+            .background(
+                if (rainbow) Brush.linearGradient(listOf(GryphPink, GryphLilac, GryphSky))
+                else Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primaryContainer))
+            ),
     ) {
         Column(
             Modifier.fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            GradientFolderIcon(Modifier.size(80.dp))
+            FolderIcon(Modifier.size(80.dp))
             Spacer(Modifier.height(10.dp))
             Text(
                 stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineSmall,
-                color = androidx.compose.ui.graphics.Color.White,
+                color = onCard,
             )
             Text(
                 if (version.isEmpty()) "" else "v$version",
                 style = MaterialTheme.typography.bodyMedium,
-                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
+                color = onCard.copy(alpha = 0.9f),
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(R.string.about_tagline),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
-                color = androidx.compose.ui.graphics.Color.White,
+                color = onCard,
             )
         }
     }
+}
+
+
+private fun paletteName(p: AppPalette): Int = when (p) {
+    AppPalette.DEFAULT -> R.string.palette_default
+    AppPalette.GRYPHONIS -> R.string.palette_gryphonis
+    AppPalette.OCEAN -> R.string.palette_ocean
+    AppPalette.FOREST -> R.string.palette_forest
+    AppPalette.VIOLET -> R.string.palette_violet
+    AppPalette.ROSE -> R.string.palette_rose
+    AppPalette.AMBER -> R.string.palette_amber
+    AppPalette.GRAPHITE -> R.string.palette_graphite
+}
+
+private fun paletteHint(p: AppPalette): Int = when (p) {
+    AppPalette.DEFAULT -> R.string.palette_default_sub
+    AppPalette.GRYPHONIS -> R.string.palette_gryphonis_sub
+    else -> R.string.palette_mono_sub
+}
+
+/** Маленький предпросмотр схемы: фон в текущем режиме (светлый/тёмный) и акцентный кружок. */
+@Composable
+private fun PaletteSwatch(palette: AppPalette, dark: Boolean, modifier: Modifier = Modifier) {
+    val (bg, accent) = previewColors(palette, dark)
+    Box(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(bg)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val dot = Modifier.size(24.dp).clip(CircleShape)
+        if (palette == AppPalette.GRYPHONIS) {
+            Box(dot.background(Brush.linearGradient(listOf(GryphPink, GryphLilac, GryphSky))))
+        } else {
+            Box(dot.background(accent))
+        }
+    }
+}
+
+@Composable
+private fun PaletteDialog(current: AppPalette, onPick: (AppPalette) -> Unit, onDismiss: () -> Unit) {
+    // какой вариант показывать в предпросмотре — смотрим на то, что сейчас на экране
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.set_palette)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                for (p in AppPalette.values()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onPick(p) }
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PaletteSwatch(p, dark, Modifier.size(46.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(paletteName(p)), style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                stringResource(paletteHint(p)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        RadioButton(selected = current == p, onClick = { onPick(p) })
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
+    )
 }

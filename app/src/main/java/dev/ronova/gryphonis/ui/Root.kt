@@ -58,7 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.ronova.gryphonis.R
 import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.media.MusicPlayer
-import dev.ronova.gryphonis.ui.components.GradientFolderIcon
+import dev.ronova.gryphonis.ui.components.FolderIcon
 import dev.ronova.gryphonis.ui.components.HashDialog
 import dev.ronova.gryphonis.ui.components.MiniPlayer
 import dev.ronova.gryphonis.ui.components.PermissionDialog
@@ -253,7 +253,7 @@ fun PermissionScreen(onGrant: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            GradientFolderIcon(Modifier.size(112.dp))
+            FolderIcon(Modifier.size(112.dp))
             Spacer(Modifier.height(24.dp))
             Text(
                 stringResource(R.string.app_name),

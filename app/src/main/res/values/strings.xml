@@ -158,7 +158,7 @@
     <string name="remote_upload_pick">Choose files to upload</string>
     <string name="choose_this_folder">Choose this folder</string>
     <string name="set_appearance">Appearance</string>
-    <string name="set_theme">Theme</string>
+    <string name="set_theme">Light or dark</string>
     <string name="theme_system">System default</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
@@ -221,4 +221,36 @@
     <string name="ftp_save_connection">Save this connection</string>
     <string name="nav_home">Home</string>
     <string name="archive_uri_unsupported">Cannot open this archive from that app. Open it from the file manager instead.</string>
+
+    <!-- Themes -->
+    <string name="set_palette">Theme</string>
+    <string name="set_palette_dynamic_on">Wallpaper colors are on (pick a scheme to switch back)</string>
+    <string name="palette_default">Default</string>
+    <string name="palette_default_sub">Dark: ash gray, light: cream. Coral accent</string>
+    <string name="palette_gryphonis">Gryphonis</string>
+    <string name="palette_gryphonis_sub">Brand pink-lilac-sky rainbow with gradients</string>
+    <string name="palette_ocean">Ocean</string>
+    <string name="palette_forest">Forest</string>
+    <string name="palette_violet">Violet</string>
+    <string name="palette_rose">Rose</string>
+    <string name="palette_amber">Amber</string>
+    <string name="palette_graphite">Graphite</string>
+    <string name="palette_mono_sub">One color, no gradients</string>
+
+    <!-- Installing split packages -->
+    <string name="install_preparing">Preparing installation</string>
+    <string name="install_need_permission">Allow Gryphonis to install apps, then open the file again</string>
+    <string name="install_bad_package">This package could not be read</string>
+    <string name="install_no_apk">No APK files found inside this package</string>
+    <string name="install_success">App installed</string>
+    <string name="install_cancelled">Installation cancelled</string>
+    <string name="install_failed">Installation failed: %1$s</string>
+    <string name="install_err_conflict">conflicts with an installed app (different signature?) — uninstall it first</string>
+    <string name="install_err_incompatible">not compatible with this device</string>
+    <string name="install_err_storage">not enough free space</string>
+    <string name="install_err_blocked">blocked by the system or Play Protect</string>
+    <string name="install_err_invalid">the package is broken or incomplete</string>
+    <string name="install_obb_failed">Game data (OBB) could not be copied for %1$d file(s). Android 11+ may block access to Android/obb — copy it manually</string>
+    <string name="about_support">Support the project</string>
+    <string name="about_support_sub">Boosty — boosty.to/ronovamain/donate</string>
 </resources>

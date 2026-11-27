@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
                 this@MainActivity.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 onDispose { }
             }
-            GryphonisTheme(darkTheme = dark, dynamicColor = settings.dynamicColor) {
+            GryphonisTheme(darkTheme = dark, dynamicColor = settings.dynamicColor, palette = settings.palette) {
                 GryphonisRoot(vm)
             }
         }

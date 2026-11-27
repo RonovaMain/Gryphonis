@@ -158,7 +158,7 @@
     <string name="remote_upload_pick">Выберите файлы для отправки</string>
     <string name="choose_this_folder">Выбрать эту папку</string>
     <string name="set_appearance">Оформление</string>
-    <string name="set_theme">Тема</string>
+    <string name="set_theme">Светлая или тёмная</string>
     <string name="theme_system">Как в системе</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
@@ -221,4 +221,36 @@
     <string name="ftp_save_connection">Сохранить это подключение</string>
     <string name="nav_home">Главная</string>
     <string name="archive_uri_unsupported">Не удалось открыть архив из этого приложения. Откройте его из проводника.</string>
+
+    <!-- Темы -->
+    <string name="set_palette">Тема оформления</string>
+    <string name="set_palette_dynamic_on">Включены цвета обоев (выберите схему, чтобы вернуться)</string>
+    <string name="palette_default">По умолчанию</string>
+    <string name="palette_default_sub">Тёмная — пепельная, светлая — кремовая. Коралловый акцент</string>
+    <string name="palette_gryphonis">Gryphonis</string>
+    <string name="palette_gryphonis_sub">Фирменная радуга: розовый, лиловый, небесный, с переливами</string>
+    <string name="palette_ocean">Океан</string>
+    <string name="palette_forest">Лес</string>
+    <string name="palette_violet">Фиалка</string>
+    <string name="palette_rose">Роза</string>
+    <string name="palette_amber">Янтарь</string>
+    <string name="palette_graphite">Графит</string>
+    <string name="palette_mono_sub">Один цвет, без переливов</string>
+
+    <!-- Установка составных пакетов -->
+    <string name="install_preparing">Подготовка установки</string>
+    <string name="install_need_permission">Разрешите Gryphonis устанавливать приложения и откройте файл снова</string>
+    <string name="install_bad_package">Не удалось прочитать пакет</string>
+    <string name="install_no_apk">Внутри пакета нет APK-файлов</string>
+    <string name="install_success">Приложение установлено</string>
+    <string name="install_cancelled">Установка отменена</string>
+    <string name="install_failed">Не удалось установить: %1$s</string>
+    <string name="install_err_conflict">конфликт с установленным приложением (другая подпись?) — сначала удалите его</string>
+    <string name="install_err_incompatible">пакет не подходит этому устройству</string>
+    <string name="install_err_storage">не хватает свободного места</string>
+    <string name="install_err_blocked">заблокировано системой или Play Protect</string>
+    <string name="install_err_invalid">пакет повреждён или неполный</string>
+    <string name="install_obb_failed">Данные игры (OBB) не удалось скопировать: %1$d файл(ов). Android 11+ может закрывать доступ к Android/obb — скопируйте вручную</string>
+    <string name="about_support">Поддержать проект</string>
+    <string name="about_support_sub">Boosty — boosty.to/ronovamain/donate</string>
 </resources>

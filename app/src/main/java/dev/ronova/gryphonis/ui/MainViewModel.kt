@@ -23,7 +23,10 @@ import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.data.TransferResult
 import dev.ronova.gryphonis.data.Trash
 import dev.ronova.gryphonis.data.TrashItem
+import dev.ronova.gryphonis.data.PACKAGE_BUNDLE_EXT
 import dev.ronova.gryphonis.data.kindOf
+import dev.ronova.gryphonis.install.InstallBus
+import dev.ronova.gryphonis.install.PackageInstall
 import dev.ronova.gryphonis.data.toFileItem
 import dev.ronova.gryphonis.data.sortedFor
 import dev.ronova.gryphonis.ftp.RemoteSession
@@ -135,6 +138,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val zipTarget = MutableStateFlow<FileItem?>(null)
     val hashResult = MutableStateFlow<Pair<String, String>?>(null)
     val events = MutableSharedFlow<String>(extraBufferCapacity = 16)
+
+    init {
+        // итоги установки приходят из BroadcastReceiver
+        viewModelScope.launch { InstallBus.events.collect { events.tryEmit(it) } }
+    }
     val refreshing = MutableStateFlow(false)
     val trashItems = MutableStateFlow<List<TrashItem>>(emptyList())
 
@@ -393,8 +401,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             FileKind.VIDEO -> push(Screen.Video(item.path, queue))
             FileKind.IMAGE -> push(Screen.Image(item.path, queue))
             FileKind.TEXT -> push(Screen.Text(item.path, queue))
+            FileKind.APK -> openPackage(item.file)
             else -> if (ArchiveOps.isBrowsable(item.name)) zipTarget.value = item else openExternal(item.file)
         }
+    }
+
+    /** Обычный .apk открывается системным установщиком, составные пакеты (.apks, .xapk, .apkm) ставим сами. */
+    fun openPackage(file: File) {
+        if (file.extension.lowercase() in PACKAGE_BUNDLE_EXT) installBundle(file) else openExternal(file)
+    }
+
+    private fun installBundle(file: File) {
+        val app = getApplication<Application>()
+        if (!ensurePackageInstallAllowed()) return
+        val started = TransferManager.run(
+            str(R.string.install_preparing),
+            onResult = { r -> if (r is TransferResult.Cancelled) say(R.string.install_cancelled) },
+        ) { t -> PackageInstall.installBundle(app, file, t) }
+        if (!started) say(R.string.busy)
+    }
+
+    private fun installBundleStream(src: StreamSource) {
+        val app = getApplication<Application>()
+        if (!ensurePackageInstallAllowed()) return
+        val started = TransferManager.run(
+            str(R.string.install_preparing),
+            onResult = { r -> if (r is TransferResult.Cancelled) say(R.string.install_cancelled) },
+        ) { t -> PackageInstall.installBundleStream(app, src, t) }
+        if (!started) say(R.string.busy)
+    }
+
+    /** false — разрешения «Установка неизвестных приложений» ещё нет: открываем его настройку. */
+    private fun ensurePackageInstallAllowed(): Boolean {
+        val app = getApplication<Application>()
+        if (PackageInstall.canInstall(app)) return true
+        say(R.string.install_need_permission)
+        PackageInstall.openInstallPermissionSettings(app)
+        return false
     }
 
     fun openExternal(file: File) {
@@ -620,6 +663,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             FileKind.VIDEO -> push(Screen.Video(id, queue))
             FileKind.IMAGE -> push(Screen.Image(id, queue))
             FileKind.TEXT -> push(Screen.Text(id, queue))
+            FileKind.APK ->
+                if (src.extension in PACKAGE_BUNDLE_EXT) installBundleStream(src)
+                else if (!OpenUtil.openStream(getApplication(), src)) say(R.string.no_app_to_open)
             else -> if (!OpenUtil.openStream(getApplication(), src)) say(R.string.no_app_to_open)
         }
     }
@@ -652,6 +698,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             FileKind.VIDEO -> push(Screen.Video(item.path, queue))
             FileKind.IMAGE -> push(Screen.Image(item.path, queue))
             FileKind.TEXT -> push(Screen.Text(item.path, queue))
+            FileKind.APK -> openPackage(file)
             else -> if (ArchiveOps.isBrowsable(item.name)) push(Screen.Archive(item.path)) else openExternal(file)
         }
     }

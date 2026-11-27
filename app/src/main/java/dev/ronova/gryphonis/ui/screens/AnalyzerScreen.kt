@@ -56,23 +56,41 @@ import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.ui.MainViewModel
 import dev.ronova.gryphonis.ui.components.DeleteDialog
 import dev.ronova.gryphonis.ui.components.FileThumb
-import dev.ronova.gryphonis.ui.components.GradientFolderIcon
+import dev.ronova.gryphonis.ui.components.FolderIcon
+import dev.ronova.gryphonis.ui.components.kindAccent
+import dev.ronova.gryphonis.ui.theme.GryphTheme
+import androidx.compose.ui.graphics.lerp
 import dev.ronova.gryphonis.util.formatSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private fun kindColor(kind: FileKind): Color = when (kind) {
-    FileKind.IMAGE -> Color(0xFF26A69A)
-    FileKind.VIDEO -> Color(0xFFEF5350)
-    FileKind.AUDIO -> Color(0xFFAB47BC)
-    FileKind.TEXT -> Color(0xFF42A5F5)
-    FileKind.ARCHIVE -> Color(0xFFFFA726)
-    FileKind.PDF -> Color(0xFFE53935)
-    FileKind.APK -> Color(0xFF66BB6A)
-    FileKind.DOC -> Color(0xFF5C6BC0)
-    else -> Color(0xFF90A4AE)
+/**
+ * Цвет типа в диаграмме. В фирменной теме — свой цвет у каждого типа, в однотонных — оттенки
+ * одного акцентного цвета (светлее/темнее), чтобы полоса читалась, но «радуги» не было.
+ */
+@Composable
+private fun kindColor(kind: FileKind): Color {
+    if (GryphTheme.extras.rainbow) return kindAccent(kind)
+    val base = MaterialTheme.colorScheme.primary
+    val bg = MaterialTheme.colorScheme.surface
+    val steps = when (kind) {
+        FileKind.IMAGE -> 0.00f
+        FileKind.VIDEO -> 0.22f
+        FileKind.AUDIO -> 0.44f
+        FileKind.TEXT -> 0.62f
+        FileKind.ARCHIVE -> -0.20f
+        FileKind.PDF -> -0.38f
+        FileKind.APK -> 0.78f
+        FileKind.DOC -> -0.55f
+        else -> 0f
+    }
+    return when {
+        kind == FileKind.OTHER || kind == FileKind.FOLDER -> MaterialTheme.colorScheme.outline
+        steps >= 0f -> lerp(base, bg, steps * 0.75f)
+        else -> lerp(base, Color.Black, -steps)
+    }
 }
 
 @Composable
@@ -247,7 +265,7 @@ fun AnalyzerScreen(vm: MainViewModel, path: String, onBack: () -> Unit) {
                                 .padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            GradientFolderIcon(Modifier.size(36.dp))
+                            FolderIcon(Modifier.size(36.dp))
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(folder.name, maxLines = 1, overflow = TextOverflow.Ellipsis)

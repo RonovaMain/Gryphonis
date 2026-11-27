@@ -13,6 +13,9 @@ private val TEXT_EXT = setOf(
     "cpp", "hpp", "cs", "go", "rs", "php", "sql", "gradle", "srt", "vtt", "lrc", "gitignore", "env",
 )
 private val ARCHIVE_EXT = setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "tbz", "tbz2", "txz")
+/** Составные пакеты приложений: ZIP с несколькими APK (+ данные игры у XAPK). Ставятся через PackageInstaller. */
+val PACKAGE_BUNDLE_EXT = setOf("apks", "xapk", "apkm")
+
 private val DOC_EXT = setOf("doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "epub", "fb2")
 
 fun kindOf(isDir: Boolean, ext: String): FileKind = when {
@@ -23,7 +26,7 @@ fun kindOf(isDir: Boolean, ext: String): FileKind = when {
     ext in TEXT_EXT -> FileKind.TEXT
     ext in ARCHIVE_EXT -> FileKind.ARCHIVE
     ext == "pdf" -> FileKind.PDF
-    ext == "apk" -> FileKind.APK
+    ext == "apk" || ext in PACKAGE_BUNDLE_EXT -> FileKind.APK
     ext in DOC_EXT -> FileKind.DOC
     else -> FileKind.OTHER
 }

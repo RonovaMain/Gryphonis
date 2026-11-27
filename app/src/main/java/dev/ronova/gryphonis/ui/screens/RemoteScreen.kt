@@ -83,7 +83,7 @@ import dev.ronova.gryphonis.ui.MainViewModel
 import dev.ronova.gryphonis.ui.RemoteViewModel
 import dev.ronova.gryphonis.ui.components.ConfirmDialog
 import dev.ronova.gryphonis.ui.components.FileTypeBadge
-import dev.ronova.gryphonis.ui.components.GradientFolderIcon
+import dev.ronova.gryphonis.ui.components.FolderIcon
 import dev.ronova.gryphonis.ui.components.LocalPickerDialog
 import dev.ronova.gryphonis.ui.components.TextInputDialog
 import dev.ronova.gryphonis.util.StorageUtil
@@ -335,7 +335,7 @@ fun RemoteScreen(vm: MainViewModel, onBack: () -> Unit) {
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         if (item.isDir) {
-                                            GradientFolderIcon(Modifier.size(40.dp))
+                                            FolderIcon(Modifier.size(40.dp))
                                         } else {
                                             FileTypeBadge(kindOf(false, item.name.substringAfterLast('.', "").lowercase()), Modifier.size(40.dp))
                                         }

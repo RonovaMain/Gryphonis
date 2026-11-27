@@ -18,8 +18,15 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/**
+ * Цветовая схема приложения. DEFAULT — по умолчанию (пепельно-угольная с коралловым / кремовая с коралловым),
+ * GRYPHONIS — фирменная розово-небесная «радуга» с переливами, остальные — однотонные, без градиентов.
+ */
+enum class AppPalette { DEFAULT, GRYPHONIS, OCEAN, FOREST, VIOLET, ROSE, AMBER, GRAPHITE }
+
 data class AppSettings(
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeMode: ThemeMode = ThemeMode.DARK,
+    val palette: AppPalette = AppPalette.DEFAULT,
     val dynamicColor: Boolean = false,
     val showHidden: Boolean = false,
     val sortBy: SortBy = SortBy.NAME,
@@ -42,6 +49,7 @@ data class AppSettings(
 
 object Keys {
     val THEME = stringPreferencesKey("theme")
+    val PALETTE = stringPreferencesKey("palette")
     val DYNAMIC = booleanPreferencesKey("dynamic_color")
     val HIDDEN = booleanPreferencesKey("show_hidden")
     val SORT_BY = stringPreferencesKey("sort_by")
@@ -68,7 +76,8 @@ class SettingsRepository(private val context: Context) {
         .catch { emit(emptyPreferences()) }
         .map { p ->
             AppSettings(
-                themeMode = runCatching { ThemeMode.valueOf(p[Keys.THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM),
+                themeMode = runCatching { ThemeMode.valueOf(p[Keys.THEME] ?: "DARK") }.getOrDefault(ThemeMode.DARK),
+                palette = runCatching { AppPalette.valueOf(p[Keys.PALETTE] ?: "DEFAULT") }.getOrDefault(AppPalette.DEFAULT),
                 dynamicColor = p[Keys.DYNAMIC] ?: false,
                 showHidden = p[Keys.HIDDEN] ?: false,
                 sortBy = runCatching { SortBy.valueOf(p[Keys.SORT_BY] ?: "NAME") }.getOrDefault(SortBy.NAME),

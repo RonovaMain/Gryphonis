@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ronova.gryphonis.media.AudioMeta
@@ -88,23 +89,21 @@ fun MiniPlayer(onOpen: () -> Unit, modifier: Modifier = Modifier) {
                 Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(listOf(GryphPink, GryphLilac, GryphSky))),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val cover = meta?.cover
-                    if (cover != null) {
-                        Image(bitmap = cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    } else {
-                        Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = Color.White)
-                    }
-                }
+                CoverArt(
+                    cover = meta?.cover,
+                    iconSize = 26.dp,
+                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)),
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
                     if (artist.isNotEmpty()) {
                         Text(
                             artist,
