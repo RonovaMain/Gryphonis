@@ -70,6 +70,8 @@ import dev.ronova.gryphonis.ui.screens.AudioPlayerScreen
 import dev.ronova.gryphonis.ui.screens.BrowserScreen
 import dev.ronova.gryphonis.ui.screens.FtpServerScreen
 import dev.ronova.gryphonis.ui.screens.ImageViewerScreen
+import dev.ronova.gryphonis.ui.screens.QuickAccessScreen
+import dev.ronova.gryphonis.ui.screens.RecentScreen
 import dev.ronova.gryphonis.ui.screens.RemoteScreen
 import dev.ronova.gryphonis.ui.screens.SettingsScreen
 import dev.ronova.gryphonis.ui.screens.TextViewerScreen
@@ -170,6 +172,8 @@ fun GryphonisRoot(vm: MainViewModel) {
                             is Screen.FtpServer -> FtpServerScreen(vm, onBack = { vm.pop() })
                             is Screen.Remote -> RemoteScreen(vm, onBack = { vm.pop() })
                             is Screen.Trash -> TrashScreen(vm, onBack = { vm.pop() })
+                            is Screen.Recent -> RecentScreen(vm, onBack = { vm.pop() })
+                            is Screen.QuickAccess -> QuickAccessScreen(vm, onBack = { vm.pop() })
                             is Screen.Archive -> ArchiveScreen(vm, screen.path, onBack = { vm.pop() })
                             is Screen.Analyzer -> AnalyzerScreen(
                                 vm = vm,
@@ -178,7 +182,11 @@ fun GryphonisRoot(vm: MainViewModel) {
                             )
                             is Screen.Text -> TextViewerScreen(screen.path, screen.queue, onBack = { vm.pop() })
                             is Screen.Image -> ImageViewerScreen(screen.path, screen.queue, onBack = { vm.pop() })
-                            is Screen.Audio -> AudioPlayerScreen(screen.path, onBack = { vm.pop() })
+                            is Screen.Audio -> AudioPlayerScreen(
+                                path = screen.path,
+                                onBack = { vm.pop() },
+                                onReveal = { vm.revealInFolder(it) },
+                            )
                             is Screen.Video -> VideoPlayerScreen(
                                 startPath = screen.path,
                                 queue = screen.queue,

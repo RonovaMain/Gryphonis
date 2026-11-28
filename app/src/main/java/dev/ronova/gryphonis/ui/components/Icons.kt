@@ -27,6 +27,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import dev.ronova.gryphonis.media.Thumbnails
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import dev.ronova.gryphonis.data.FileItem
@@ -131,11 +141,32 @@ fun FileThumb(item: FileItem, showThumbnail: Boolean, modifier: Modifier = Modif
     if (item.isDirectory) {
         FolderIcon(modifier.then(faded))
     } else {
+        val ctx = LocalContext.current
+        val hasPicture = item.kind == FileKind.AUDIO || item.kind == FileKind.APK
+        // Обложка трека / иконка приложения: сначала берём из памяти (без мигания), остальное грузится в фоне
+        var picture by remember(item.path, item.modified, showThumbnail) {
+            mutableStateOf<ImageBitmap?>(
+                if (!showThumbnail) null
+                else when (item.kind) {
+                    FileKind.AUDIO -> Thumbnails.peekAudio(item)
+                    FileKind.APK -> Thumbnails.peekApk(item)
+                    else -> null
+                }
+            )
+        }
+        if (showThumbnail && hasPicture) {
+            LaunchedEffect(item.path, item.modified, item.size) {
+                if (picture == null) {
+                    picture = if (item.kind == FileKind.AUDIO) Thumbnails.audio(item) else Thumbnails.apk(ctx, item)
+                }
+            }
+        }
         Box(modifier.then(faded).clip(RoundedCornerShape(10.dp))) {
-            FileTypeBadge(item.kind, Modifier.fillMaxSize())
+            // у иконок приложений бывают прозрачные углы — заглушку под ними прячем, под обложками она не видна
+            if (picture == null || item.kind == FileKind.AUDIO) FileTypeBadge(item.kind, Modifier.fillMaxSize())
             if (showThumbnail && item.kind == FileKind.IMAGE) {
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
+                    model = ImageRequest.Builder(ctx)
                         .data(item.file)
                         .size(160)
                         .crossfade(true)
@@ -145,6 +176,17 @@ fun FileThumb(item: FileItem, showThumbnail: Boolean, modifier: Modifier = Modif
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            Crossfade(targetState = picture, animationSpec = tween(180), label = "thumb") { bmp ->
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp,
+                        contentDescription = null,
+                        contentScale = if (item.kind == FileKind.APK) ContentScale.Fit else ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            if (item.kind == FileKind.AUDIO) NowPlayingOverlay(nowPlayingOf(item.path))
         }
     }
 }

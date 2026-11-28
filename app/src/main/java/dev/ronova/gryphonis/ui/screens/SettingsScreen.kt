@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -149,6 +150,23 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 stringResource(R.string.set_thumbs_sub),
                 s.showThumbnails,
             ) { vm.setPref(Keys.THUMBS, it) }
+
+            SettingsHeader(stringResource(R.string.set_home))
+            SwitchRow(
+                Icons.Rounded.Folder,
+                stringResource(R.string.set_quick_show),
+                stringResource(R.string.set_quick_show_sub),
+                s.quickAccess,
+            ) { vm.setPref(Keys.QUICK_ENABLED, it) }
+            ClickRow(
+                Icons.Rounded.Sort,
+                stringResource(R.string.set_quick_folders),
+                if (s.quickAccess) {
+                    stringResource(R.string.set_quick_folders_count, s.quickFolders?.size ?: StorageUtil.defaultQuickFolders().size)
+                } else {
+                    stringResource(R.string.set_quick_off)
+                },
+            ) { vm.push(Screen.QuickAccess) }
 
             SettingsHeader(stringResource(R.string.set_files))
             SwitchRow(

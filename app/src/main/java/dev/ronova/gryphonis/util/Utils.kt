@@ -119,12 +119,17 @@ object StorageUtil {
         return result
     }
 
-    fun quickFolders(): List<File> {
+    /** Стандартный набор быстрого доступа (только существующие папки). */
+    fun defaultQuickFolders(): List<File> {
         val root = internalRoot()
         return listOf("Download", "DCIM", "Pictures", "Music", "Movies", "Documents")
             .map { File(root, it) }
             .filter { it.isDirectory }
     }
+
+    /** Папки быстрого доступа в порядке пользователя; [custom] == null — стандартные. Несуществующие пропускаются. */
+    fun resolveQuick(custom: List<String>?): List<File> =
+        if (custom == null) defaultQuickFolders() else custom.map { File(it) }.filter { it.isDirectory }
 }
 
 // ------------------------------------------------------------------ network

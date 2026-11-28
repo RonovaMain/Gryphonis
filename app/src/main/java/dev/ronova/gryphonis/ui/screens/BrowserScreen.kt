@@ -29,6 +29,15 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.text.font.FontWeight
+import dev.ronova.gryphonis.ui.components.NowPlaying
+import dev.ronova.gryphonis.ui.components.nowPlayingOf
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -150,6 +159,27 @@ fun BrowserScreen(vm: MainViewModel) {
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
     val extClip by vm.extClip.collectAsStateWithLifecycle()
     val trash by vm.trashItems.collectAsStateWithLifecycle()
+    val highlight by vm.highlightPath.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+
+    // «Показать в папке»: после открытия папки прокручиваем список к нужному файлу (один раз на файл)
+    var scrolledFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(highlight, items) {
+        val h = highlight
+        if (h == null) {
+            scrolledFor = null
+            return@LaunchedEffect
+        }
+        if (scrolledFor == h) return@LaunchedEffect
+        val index = items.indexOfFirst { it.path == h }
+        if (index >= 0) {
+            scrolledFor = h
+            delay(150)
+            val target = (index - 2).coerceAtLeast(0)
+            if (settings.gridView) gridState.animateScrollToItem(target) else listState.animateScrollToItem(target)
+        }
+    }
 
     var menuOpen by remember { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
@@ -356,6 +386,21 @@ fun BrowserScreen(vm: MainViewModel) {
                                             vm.toggleBookmark(currentDirectory)
                                         },
                                     )
+                                    val quickMarked = currentDirectory.absolutePath in vm.quickPaths()
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(
+                                                    if (quickMarked) R.string.menu_quick_remove else R.string.menu_quick_add
+                                                )
+                                            )
+                                        },
+                                        leadingIcon = { Icon(Icons.Rounded.Folder, contentDescription = null) },
+                                        onClick = {
+                                            menuOpen = false
+                                            vm.toggleQuickFolder(currentDirectory)
+                                        },
+                                    )
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.menu_refresh)) },
                                         leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null) },
@@ -491,7 +536,7 @@ fun BrowserScreen(vm: MainViewModel) {
                     label = "home",
                 ) { isHome ->
                 if (isHome) {
-                    HomeContent(vm, roots, settings.bookmarks, trash)
+                    HomeContent(vm, roots, settings.bookmarks, trash, settings.quickAccess, settings.quickFolders)
                 } else if (loadError != null) {
                     CenterMessage(loadError ?: "")
                 } else if (items.isEmpty() && !loading && !searching) {
@@ -500,6 +545,7 @@ fun BrowserScreen(vm: MainViewModel) {
                     )
                 } else if (settings.gridView) {
                     LazyVerticalGrid(
+                        state = gridState,
                         columns = GridCells.Adaptive(104.dp),
                         contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -510,6 +556,7 @@ fun BrowserScreen(vm: MainViewModel) {
                                 modifier = Modifier.animateItem(),
                                 item = item,
                                 selected = item.path in selected,
+                                highlighted = item.path == highlight,
                                 showThumb = settings.showThumbnails,
                                 onClick = { if (selectionMode) vm.toggleSelect(item) else vm.open(item) },
                                 onLong = { vm.toggleSelect(item) },
@@ -517,12 +564,13 @@ fun BrowserScreen(vm: MainViewModel) {
                         }
                     }
                 } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
+                    LazyColumn(Modifier.fillMaxSize(), state = listState) {
                         items(items, key = { it.path }) { item ->
                             FileRow(
                                 modifier = Modifier.animateItem(),
                                 item = item,
                                 selected = item.path in selected,
+                                highlighted = item.path == highlight,
                                 selectionMode = selectionMode,
                                 showThumb = settings.showThumbnails,
                                 showPath = searchOpen && recursive && query.isNotBlank(),
@@ -707,6 +755,7 @@ private fun FileRow(
     modifier: Modifier = Modifier,
     item: FileItem,
     selected: Boolean,
+    highlighted: Boolean,
     selectionMode: Boolean,
     showThumb: Boolean,
     showPath: Boolean,
@@ -720,10 +769,12 @@ private fun FileRow(
         animationSpec = tween(150),
         label = "rowBg",
     )
+    val np = if (item.kind == FileKind.AUDIO) nowPlayingOf(item.path) else NowPlaying.NONE
     Row(
         modifier
             .fillMaxWidth()
             .background(bg)
+            .revealPulse(highlighted)
             .combinedClickable(onClick = onClick, onLongClick = onLong)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -731,7 +782,15 @@ private fun FileRow(
         FileThumb(item, showThumb, Modifier.size(44.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                item.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge,
+                // трек, который сейчас играет, выделен цветом (плюс «эквалайзер» на обложке)
+                color = if (np != NowPlaying.NONE) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                fontWeight = if (np != NowPlaying.NONE) FontWeight.SemiBold else null,
+            )
             val sub = if (item.isDirectory) formatDate(item.modified) else formatSize(ctx, item.size) + "  •  " + formatDate(item.modified)
             Text(
                 sub,
@@ -762,6 +821,7 @@ private fun FileCell(
     modifier: Modifier = Modifier,
     item: FileItem,
     selected: Boolean,
+    highlighted: Boolean,
     showThumb: Boolean,
     onClick: () -> Unit,
     onLong: () -> Unit,
@@ -771,10 +831,12 @@ private fun FileCell(
         animationSpec = tween(150),
         label = "cellBg",
     )
+    val np = if (item.kind == FileKind.AUDIO) nowPlayingOf(item.path) else NowPlaying.NONE
     Column(
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(bg)
+            .revealPulse(highlighted)
             .combinedClickable(onClick = onClick, onLongClick = onLong)
             .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -787,16 +849,46 @@ private fun FileCell(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelMedium,
+            color = if (np != NowPlaying.NONE) MaterialTheme.colorScheme.primary else Color.Unspecified,
+            fontWeight = if (np != NowPlaying.NONE) FontWeight.SemiBold else null,
         )
     }
+}
+
+/** Подсветка файла после «Показать в папке»: несколько раз мигает, затем остаётся мягкая заливка. */
+@Composable
+private fun Modifier.revealPulse(active: Boolean): Modifier {
+    val color = MaterialTheme.colorScheme.primary
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(active) {
+        if (active) {
+            repeat(3) {
+                alpha.animateTo(0.42f, tween(380))
+                alpha.animateTo(0.14f, tween(380))
+            }
+            alpha.animateTo(0.2f, tween(300))
+        } else {
+            alpha.animateTo(0f, tween(500))
+        }
+    }
+    return drawBehind { if (alpha.value > 0f) drawRect(color.copy(alpha = alpha.value)) }
 }
 
 // ---------------------------------------------------------------------- home
 
 @Composable
-private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPaths: Set<String>, trash: List<TrashItem>) {
+private fun HomeContent(
+    vm: MainViewModel,
+    roots: List<StorageRoot>,
+    bookmarkPaths: Set<String>,
+    trash: List<TrashItem>,
+    quickEnabled: Boolean,
+    quickPaths: List<String>?,
+) {
     val ctx = LocalContext.current
-    val quick = remember { StorageUtil.quickFolders() }
+    val quick = remember(quickEnabled, quickPaths) {
+        if (quickEnabled) StorageUtil.resolveQuick(quickPaths) else emptyList()
+    }
     val bookmarks = remember(bookmarkPaths) { bookmarkPaths.map { File(it) }.filter { it.isDirectory }.sortedBy { it.name.lowercase() } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -832,6 +924,33 @@ private fun HomeContent(vm: MainViewModel, roots: List<StorageRoot>, bookmarkPat
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Card(
+                onClick = { vm.openRecent() },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.History,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.home_recent), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.home_recent_sub),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

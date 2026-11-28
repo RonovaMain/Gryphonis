@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
@@ -76,6 +77,7 @@ import dev.ronova.gryphonis.stream.displayNameOf
 import dev.ronova.gryphonis.ui.components.CoverArt
 import dev.ronova.gryphonis.util.formatClock
 import kotlinx.coroutines.delay
+import java.io.File
 
 /**
  * Полноэкранный плеер. Музыка играет в службе, поэтому «назад» просто сворачивает плеер
@@ -86,7 +88,7 @@ import kotlinx.coroutines.delay
  * обложка слева, а название, перемотка и кнопки — справа.
  */
 @Composable
-fun AudioPlayerScreen(path: String?, onBack: () -> Unit) {
+fun AudioPlayerScreen(path: String?, onBack: () -> Unit, onReveal: (File) -> Unit = {}) {
     var showQueue by remember { mutableStateOf(false) }
     var seen by remember { mutableStateOf(false) }
 
@@ -96,6 +98,11 @@ fun AudioPlayerScreen(path: String?, onBack: () -> Unit) {
     }
 
     val currentPath = MusicPlayer.currentPath
+    // «Показать в папке» есть только у файлов с телефона (не у треков из архива и с FTP)
+    val revealFile = remember(currentPath) {
+        currentPath?.takeIf { it.startsWith("/") }?.let { File(it) }?.takeIf { it.exists() }
+    }
+    val reveal: (() -> Unit)? = revealFile?.let { f -> { onReveal(f) } }
     val meta by produceState<AudioMeta?>(null, currentPath) {
         value = currentPath?.let { AudioMetaLoader.load(it) }
     }
@@ -157,6 +164,7 @@ fun AudioPlayerScreen(path: String?, onBack: () -> Unit) {
                 seek = seek,
                 onBack = onBack,
                 onQueue = { showQueue = true },
+                onReveal = reveal,
                 compact = maxHeight < 380.dp,
             )
         } else {
@@ -168,6 +176,7 @@ fun AudioPlayerScreen(path: String?, onBack: () -> Unit) {
                 seek = seek,
                 onBack = onBack,
                 onQueue = { showQueue = true },
+                onReveal = reveal,
             )
         }
     }
@@ -196,9 +205,10 @@ private fun PortraitLayout(
     seek: SeekState,
     onBack: () -> Unit,
     onQueue: () -> Unit,
+    onReveal: (() -> Unit)?,
 ) {
     Column(modifier.padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        TopBar(onBack = onBack, onQueue = onQueue, modifier = Modifier.padding(top = 4.dp))
+        TopBar(onBack = onBack, onQueue = onQueue, onReveal = onReveal, modifier = Modifier.padding(top = 4.dp))
 
         // Обложка занимает всё свободное место по высоте и никогда не выталкивает кнопки за экран
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -234,6 +244,7 @@ private fun LandscapeLayout(
     seek: SeekState,
     onBack: () -> Unit,
     onQueue: () -> Unit,
+    onReveal: (() -> Unit)?,
     compact: Boolean,
 ) {
     Row(modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -256,7 +267,7 @@ private fun LandscapeLayout(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            TopBar(onBack = onBack, onQueue = onQueue, showTitle = false)
+            TopBar(onBack = onBack, onQueue = onQueue, onReveal = onReveal, showTitle = false)
             Spacer(Modifier.weight(1f))
             TrackInfo(title, sub, centered = false)
             Spacer(Modifier.height(if (compact) 2.dp else 8.dp))
@@ -278,7 +289,13 @@ private fun LandscapeLayout(
 // ------------------------------------------------------------------ части экрана
 
 @Composable
-private fun TopBar(onBack: () -> Unit, onQueue: () -> Unit, modifier: Modifier = Modifier, showTitle: Boolean = true) {
+private fun TopBar(
+    onBack: () -> Unit,
+    onQueue: () -> Unit,
+    onReveal: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    showTitle: Boolean = true,
+) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) {
@@ -313,6 +330,16 @@ private fun TopBar(onBack: () -> Unit, onQueue: () -> Unit, modifier: Modifier =
                         onQueue()
                     },
                 )
+                if (onReveal != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.show_in_folder)) },
+                        leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onReveal()
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.stop_and_close)) },
                     leadingIcon = { Icon(Icons.Rounded.Stop, contentDescription = null) },

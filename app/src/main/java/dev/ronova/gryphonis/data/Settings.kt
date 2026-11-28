@@ -13,6 +13,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gryphonis_settings")
 
@@ -45,6 +46,10 @@ data class AppSettings(
     val bookmarks: Set<String> = emptySet(),
     val trashDays: Int = 30,
     val ftpProfiles: List<FtpProfile> = emptyList(),
+    /** Показывать ли «Быстрый доступ» на главном экране. */
+    val quickAccess: Boolean = true,
+    /** Папки быстрого доступа по порядку; null — пользователь ничего не менял, берутся стандартные. */
+    val quickFolders: List<String>? = null,
 )
 
 object Keys {
@@ -68,6 +73,8 @@ object Keys {
     val BOOKMARKS = stringSetPreferencesKey("bookmarks")
     val TRASH_DAYS = intPreferencesKey("trash_days")
     val FTP_PROFILES = stringPreferencesKey("ftp_profiles")
+    val QUICK_ENABLED = booleanPreferencesKey("quick_enabled")
+    val QUICK_FOLDERS = stringPreferencesKey("quick_folders")
 }
 
 class SettingsRepository(private val context: Context) {
@@ -96,11 +103,34 @@ class SettingsRepository(private val context: Context) {
                 bookmarks = p[Keys.BOOKMARKS] ?: emptySet(),
                 trashDays = p[Keys.TRASH_DAYS] ?: 30,
                 ftpProfiles = FtpProfiles.decode(p[Keys.FTP_PROFILES]),
+                quickAccess = p[Keys.QUICK_ENABLED] ?: true,
+                quickFolders = decodeQuick(p[Keys.QUICK_FOLDERS]),
             )
         }
 
     suspend fun <T> set(key: Preferences.Key<T>, value: T) {
         context.dataStore.edit { it[key] = value }
+    }
+
+    /** null — вернуть стандартные папки. */
+    suspend fun setQuickFolders(paths: List<String>?) {
+        context.dataStore.edit { p ->
+            if (paths == null) {
+                p.remove(Keys.QUICK_FOLDERS)
+            } else {
+                p[Keys.QUICK_FOLDERS] = JSONArray(paths.distinct()).toString()
+            }
+        }
+    }
+
+    private fun decodeQuick(raw: String?): List<String>? {
+        if (raw == null) return null
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     suspend fun toggleBookmark(path: String) {

@@ -19,6 +19,8 @@ import dev.ronova.gryphonis.data.FileItem
 import dev.ronova.gryphonis.data.FileKind
 import dev.ronova.gryphonis.data.FileOps
 import dev.ronova.gryphonis.data.ProgressTracker
+import dev.ronova.gryphonis.data.RecentFile
+import dev.ronova.gryphonis.data.RecentScanner
 import dev.ronova.gryphonis.data.TransferManager
 import dev.ronova.gryphonis.data.TransferResult
 import dev.ronova.gryphonis.data.Trash
@@ -67,6 +69,8 @@ sealed interface Screen {
     data object FtpServer : Screen
     data object Remote : Screen
     data object Trash : Screen
+    data object Recent : Screen
+    data object QuickAccess : Screen
     data class Archive(val path: String) : Screen
     data class Analyzer(val path: String) : Screen
     data class Text(val path: String, val queue: List<String> = emptyList()) : Screen
@@ -76,6 +80,8 @@ sealed interface Screen {
 }
 
 data class Clip(val files: List<File>, val cut: Boolean)
+
+private const val RECENT_WINDOW_MS = 30L * 24 * 60 * 60 * 1000
 
 private data class SearchReq(val query: String, val recursive: Boolean, val dir: File?, val hidden: Boolean)
 
@@ -145,6 +151,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
     val refreshing = MutableStateFlow(false)
     val trashItems = MutableStateFlow<List<TrashItem>>(emptyList())
+
+    // ---------------------------------------------------------------- недавние файлы
+    /** Новые файлы за последние 30 дней; период и тип экран «Недавние» отбирает сам. */
+    val recentAll = MutableStateFlow<List<RecentFile>>(emptyList())
+    val recentScanning = MutableStateFlow(false)
+    private var recentJob: Job? = null
+
+    /** Файл, который нужно показать в папке (прокрутка + подсветка после «Показать в папке»). */
+    val highlightPath = MutableStateFlow<String?>(null)
+    private var highlightJob: Job? = null
 
     /** Растёт после каждой завершённой файловой операции — экраны могут перечитать данные. */
     val fsVersion = MutableStateFlow(0)
@@ -248,6 +264,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 refreshRoots()
                 refreshTrash()
                 purgeTrash()
+                // вернулись в приложение с открытым списком «Недавние» (например, после скачивания) — ищем заново
+                if (overlays.any { it is Screen.Recent }) scanRecent()
             }
         }
         restartObserver()
@@ -301,6 +319,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun <T> setPref(key: Preferences.Key<T>, value: T) {
         viewModelScope.launch { repo.set(key, value) }
+    }
+
+    /** Текущий список быстрого доступа (пути); если пользователь его не менял — стандартный. */
+    fun quickPaths(): List<String> =
+        settings.value.quickFolders ?: StorageUtil.defaultQuickFolders().map { it.absolutePath }
+
+    fun setQuickFolders(paths: List<String>?) {
+        viewModelScope.launch { repo.setQuickFolders(paths) }
+    }
+
+    fun toggleQuickFolder(dir: File) {
+        val cur = quickPaths()
+        val p = dir.absolutePath
+        setQuickFolders(if (p in cur) cur - p else cur + p)
     }
 
     fun toggleBookmark(dir: File) {
@@ -388,10 +420,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    fun open(item: FileItem) {
+    fun open(item: FileItem) = openFrom(item, displayed.value)
+
+    /**
+     * Открывает файл; очередь для листания/плейлиста — файлы того же типа из [pool] в том порядке,
+     * в котором они показаны (сортировка, скрытые, поиск; для «Недавних» — по времени появления).
+     */
+    fun openFrom(item: FileItem, pool: List<FileItem>) {
         if (!ensureAccess()) return
-        // очередь = файлы того же типа в том порядке, в котором они сейчас показаны (сортировка, скрытые, поиск)
-        val queue = displayed.value.filter { !it.isDirectory && it.kind == item.kind }.map { it.path }
+        val queue = pool.filter { !it.isDirectory && it.kind == item.kind }.map { it.path }
         when (item.kind) {
             FileKind.FOLDER -> openDir(item.file)
             FileKind.AUDIO -> {
@@ -459,10 +496,71 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (only.isEmpty() || !OpenUtil.share(getApplication(), only)) say(R.string.cannot_share)
     }
 
+    fun openRecent() {
+        if (!ensureAccess()) return
+        if (overlays.lastOrNull() !is Screen.Recent) push(Screen.Recent)
+    }
+
     fun openAnalyzer() {
         if (!ensureAccess()) return
         val p = currentDir.value ?: StorageUtil.internalRoot()
         push(Screen.Analyzer(p.absolutePath))
+    }
+
+    // ---------------------------------------------------------------- недавние / переход к файлу
+    /** Ищет новые файлы на всех накопителях. Прежний список остаётся на экране, пока идёт поиск. */
+    fun scanRecent() {
+        if (!ensureAccess()) return
+        recentJob?.cancel()
+        recentJob = viewModelScope.launch {
+            recentScanning.value = true
+            try {
+                val hidden = settings.value.showHidden
+                val dirs = roots.value.map { it.dir }.ifEmpty { listOf(StorageUtil.internalRoot()) }
+                val since = System.currentTimeMillis() - RECENT_WINDOW_MS
+                val found = withContext(Dispatchers.IO) {
+                    RecentScanner.scan(dirs, since, hidden) { isActive }
+                }
+                recentAll.value = found
+            } finally {
+                recentScanning.value = false
+            }
+        }
+    }
+
+    /** Убирает из списка «Недавние» то, чего уже нет на диске (удалили, перенесли). */
+    fun pruneRecent() {
+        viewModelScope.launch {
+            val list = recentAll.value
+            val alive = withContext(Dispatchers.IO) { list.filter { it.item.file.exists() } }
+            if (alive.size != list.size) recentAll.value = alive
+        }
+    }
+
+    /**
+     * «Показать в папке»: закрывает открытые экраны, открывает папку файла, прокручивает список к нему
+     * и подсвечивает его. Музыка при этом продолжает играть.
+     */
+    fun revealInFolder(file: File) {
+        if (!ensureAccess()) return
+        val parent = file.parentFile
+        if (parent == null || !parent.isDirectory || !file.exists()) {
+            say(R.string.reveal_missing)
+            return
+        }
+        overlays = emptyList()
+        openDir(parent)
+        highlightJob?.cancel()
+        highlightPath.value = file.absolutePath
+        highlightJob = viewModelScope.launch {
+            delay(7000)
+            highlightPath.value = null
+        }
+    }
+
+    fun clearHighlight() {
+        highlightJob?.cancel()
+        highlightPath.value = null
     }
 
     // ---------------------------------------------------------------- search
@@ -503,13 +601,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun copySelected(cut: Boolean) {
-        if (!ensureAccess()) return
         val files = selectedFiles()
         if (files.isEmpty()) return
+        if (copyFiles(files, cut)) clearSelection()
+    }
+
+    /** Кладёт файлы в буфер обмена; вставить их можно в любой папке. true — если получилось. */
+    fun copyFiles(files: List<File>, cut: Boolean, hintOpenFolder: Boolean = false): Boolean {
+        if (!ensureAccess() || files.isEmpty()) return false
         ClipHub.state.value = null
         clipboard.value = Clip(files, cut)
-        clearSelection()
-        say(if (cut) R.string.cut_n else R.string.copied_n, files.size)
+        if (hintOpenFolder) {
+            say(if (cut) R.string.cut_open_folder else R.string.copied_open_folder, files.size)
+        } else {
+            say(if (cut) R.string.cut_n else R.string.copied_n, files.size)
+        }
+        return true
     }
 
     fun clearClipboard() {

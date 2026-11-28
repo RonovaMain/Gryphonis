@@ -32,7 +32,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
-        versionName = "1.10.2"
+        versionName = "1.11.4"
     }
 
     signingConfigs {
